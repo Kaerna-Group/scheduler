@@ -99,4 +99,13 @@ describe('seed fixtures', () => {
     expect(merged).toHaveLength(2);
     expect(merged.find((user) => user.slug === 'anna')).toMatchObject({ displayName: 'Анна', role: 'editor' });
   });
+
+  it('migrates the legacy tymofii identity to ermolz in user caches', () => {
+    const merged = mergeScheduleUsers([
+      { id: 'U001', slug: 'tymofii', displayName: 'Tymofii', role: 'editor' },
+    ]);
+    expect(merged).toEqual([
+      { id: 'U001', slug: 'ermolz', displayName: 'Ermolz', role: 'editor' },
+    ]);
+  });
 });

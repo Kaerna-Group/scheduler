@@ -11,14 +11,17 @@ import {
 import type { ScheduleSource, UserSchedule } from '@/lib/schedule/types';
 
 const USER_KEY = 'scheduler_selected_user_v1';
+const LEGACY_USER_SLUG = 'tymofii';
+const DEFAULT_USER_SLUG = 'ermolz';
 
 function initialUser() {
   try {
     const users = readCachedUsers();
-    const stored = localStorage.getItem(USER_KEY);
-    return users.some((user) => user.slug === stored) ? String(stored) : (users[0]?.slug ?? 'tymofii');
+    const rawStored = localStorage.getItem(USER_KEY);
+    const stored = rawStored === LEGACY_USER_SLUG ? DEFAULT_USER_SLUG : rawStored;
+    return users.some((user) => user.slug === stored) ? String(stored) : (users[0]?.slug ?? DEFAULT_USER_SLUG);
   } catch {
-    return 'tymofii';
+    return DEFAULT_USER_SLUG;
   }
 }
 

@@ -5,6 +5,8 @@ const API_URL = (import.meta.env.VITE_SCHEDULE_API_URL as string | undefined)?.t
 const CACHE_PREFIX = 'scheduler_cache_v1:';
 const USERS_CACHE_KEY = 'scheduler_users_v1';
 const EDIT_TOKEN_PREFIX = 'scheduler_edit_token_v1:';
+const LEGACY_USER_SLUG = 'tymofii';
+const DEFAULT_USER_SLUG = 'ermolz';
 
 interface ApiSuccess<T> {
   ok: true;
@@ -59,7 +61,12 @@ function isScheduleUser(value: unknown): value is ScheduleUser {
 
 export function mergeScheduleUsers(...collections: ScheduleUser[][]): ScheduleUser[] {
   const users = new Map<string, ScheduleUser>();
-  collections.flat().forEach((user) => users.set(user.slug, user));
+  collections.flat().forEach((user) => {
+    const normalized = user.slug === LEGACY_USER_SLUG
+      ? { ...user, slug: DEFAULT_USER_SLUG, displayName: user.displayName === 'Tymofii' ? 'Ermolz' : user.displayName }
+      : user;
+    users.set(normalized.slug, normalized);
+  });
   return [...users.values()].sort((first, second) => first.displayName.localeCompare(second.displayName));
 }
 
@@ -115,7 +122,9 @@ export function getFallbackSchedule(userSlug = fallbackSchedule.user.slug): User
 
 export function readCachedSchedule(userSlug: string, semesterId: string): UserSchedule | null {
   try {
-    const raw = localStorage.getItem(cacheKey(userSlug, semesterId));
+    const raw = localStorage.getItem(cacheKey(userSlug, semesterId)) ?? (
+      userSlug === DEFAULT_USER_SLUG ? localStorage.getItem(cacheKey(LEGACY_USER_SLUG, semesterId)) : null
+    );
     if (!raw) return null;
     const schedule = JSON.parse(raw) as UserSchedule;
     const users = mergeScheduleUsers(schedule.users, readCachedUsers());
@@ -140,7 +149,16 @@ function writeCachedSchedule(schedule: UserSchedule) {
 
 export function getStoredEditToken(userSlug: string) {
   try {
-    return localStorage.getItem(`${EDIT_TOKEN_PREFIX}${userSlug}`) ?? '';
+    const currentKey = `${EDIT_TOKEN_PREFIX}${userSlug}`;
+    const current = localStorage.getItem(currentKey);
+    if (current || userSlug !== DEFAULT_USER_SLUG) return current ?? '';
+    const legacyKey = `${EDIT_TOKEN_PREFIX}${LEGACY_USER_SLUG}`;
+    const legacy = localStorage.getItem(legacyKey) ?? '';
+    if (legacy) {
+      localStorage.setItem(currentKey, legacy);
+      localStorage.removeItem(legacyKey);
+    }
+    return legacy;
   } catch {
     return '';
   }

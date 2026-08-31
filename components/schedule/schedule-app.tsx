@@ -8,7 +8,7 @@ import {
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { useSchedule } from '@/hooks/use-schedule';
 import type { Lesson, Subject, WeekDay } from '@/lib/schedule/types';
 import {
@@ -153,6 +153,10 @@ export function ScheduleApp() {
   const conflictIds = useMemo(() => getConflictIds(lessons, week), [lessons, week]);
   const activeLessons = useMemo(() => lessons.filter((lesson) => lesson.weeks.includes(week) && (subjectId === 'all' || lesson.subjectId === subjectId)), [lessons, week, subjectId]);
   const conflictCount = activeLessons.filter((lesson) => conflictIds.has(lesson.id)).length;
+  const selectedUserName = schedule.users.find((user) => user.slug === selectedUser)?.displayName ?? schedule.user.displayName;
+  const selectedSubjectName = subjectId === 'all'
+    ? 'Усі дисципліни'
+    : (subjects.find((subject) => subject.id === subjectId)?.shortName ?? 'Усі дисципліни');
   const visibleDays = view === 'today' ? (currentDay ? [currentDay] : []) : dayOrder;
   const visibleLessonCount = view === 'today' && currentDay
     ? activeLessons.filter((lesson) => lesson.day === currentDay).length
@@ -191,7 +195,7 @@ export function ScheduleApp() {
           >
             <SelectTrigger aria-label="Користувач розкладу" className="order-3 h-10 min-w-[170px] flex-1 rounded-full border-[#dedacf] bg-white/80 px-3.5 text-xs font-semibold text-[#4f5959] shadow-none sm:order-none sm:max-w-[220px] xl:h-11 xl:max-w-[240px] xl:text-sm">
               <UserRound className="size-3.5 shrink-0 text-[#7e8986]" />
-              <SelectValue />
+              <span className="min-w-0 flex-1 truncate text-left">{selectedUserName}</span>
             </SelectTrigger>
             <SelectContent align="start" sideOffset={7} className="min-w-[260px] rounded-[17px] border border-[#dedacf] bg-[#fffefb] p-1.5 shadow-[0_18px_50px_rgb(41_54_56/16%)]">
               {schedule.users.map((user) => <SelectItem key={user.id} value={user.slug} className="min-h-10 rounded-xl px-3 text-sm focus:bg-[#f0eee7]">{user.displayName}</SelectItem>)}
@@ -236,7 +240,7 @@ export function ScheduleApp() {
             <Select value={subjectId} onValueChange={(value) => value && setSubjectId(value)}>
               <SelectTrigger aria-label="Фільтр за предметом" className="h-10 min-w-[230px] flex-1 rounded-full border-[#dfdbd1] bg-white px-4 text-xs font-semibold text-[#5c6260] shadow-none sm:max-w-[320px] xl:h-11 xl:max-w-[360px] xl:text-sm">
                 <BookOpenText className="size-4 shrink-0 text-[#88918f]" />
-                <SelectValue />
+                <span className="min-w-0 flex-1 truncate text-left">{selectedSubjectName}</span>
               </SelectTrigger>
               <SelectContent align="end" sideOffset={7} className="min-w-[min(440px,calc(100vw-24px))] rounded-[17px] border border-[#dedacf] bg-[#fffefb] p-1.5 shadow-[0_18px_50px_rgb(41_54_56/16%)]">
                 <SelectItem value="all" className="min-h-10 rounded-xl px-3 text-sm font-semibold focus:bg-[#f0eee7]">Усі дисципліни</SelectItem>

@@ -20,18 +20,18 @@ function setupScheduler() {
   return {
     spreadsheetId: spreadsheet.getId(),
     seeded: true,
-    editTokens: { tymofii: token },
+    editTokens: { ermolz: token },
     warning: 'Copy the edit token now. Only its SHA-256 hash is stored in Sheets.',
   };
 }
 
-function createSeedDatabase_(tymofiiToken) {
+function createSeedDatabase_(ermolzToken) {
   const database = {};
   Object.keys(SCHEDULER_SHEETS).forEach(function (name) { database[name] = []; });
 
   database.Users.push({
-    user_id: 'U001', slug: 'tymofii', display_name: 'Tymofii', role: 'editor',
-    edit_token_hash: hashEditToken_(tymofiiToken), active: 'yes',
+    user_id: 'U001', slug: 'ermolz', display_name: 'Ermolz', role: 'editor',
+    edit_token_hash: hashEditToken_(ermolzToken), active: 'yes',
   });
   database.Semesters.push({
     semester_id: 'SEM-2026-FALL', title: 'Осінь 2026 / 27', start_date: '2026-09-01',
@@ -66,7 +66,7 @@ function createSeedDatabase_(tymofiiToken) {
       label: course.group + ' група', active: 'yes',
     });
     database.Enrollments.push({
-      enrollment_id: 'ENR-TYMOFII-' + String(index + 1).padStart(2, '0'), user_id: 'U001',
+      enrollment_id: 'ENR-ERMOLZ-' + String(index + 1).padStart(2, '0'), user_id: 'U001',
       offering_id: course.offeringId, group_id: groupId, active: 'yes',
     });
   });
@@ -166,6 +166,37 @@ function rotateSchedulerEditToken(slug) {
     }], revision);
     persistDatabase_(database, ['Users', 'Meta', 'AuditLog']);
     return { user: publicUser_(user), editToken: token, warning: 'The previous token is now invalid.' };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function migrateTymofiiUserToErmolz() {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(SCHEDULER_CONFIG.lockTimeoutMs);
+  try {
+    const database = loadDatabase_();
+    const existing = database.Users.find(function (row) { return row.slug === 'ermolz'; });
+    const legacy = database.Users.find(function (row) { return row.slug === 'tymofii'; });
+    if (!legacy) {
+      if (existing) return { migrated: false, user: publicUser_(existing), message: 'User already uses slug ermolz.' };
+      throw new Error('User with slug tymofii was not found.');
+    }
+    if (existing && existing.user_id !== legacy.user_id) throw new Error('Slug ermolz is already used by another user.');
+
+    const previous = Object.assign({}, legacy);
+    legacy.slug = 'ermolz';
+    if (legacy.display_name === 'Tymofii') legacy.display_name = 'Ermolz';
+    const revision = getRevisionFromDb_(database) + 1;
+    setRevisionInDb_(database, revision);
+    appendAuditChanges_(database, { user_id: 'SYSTEM', slug: 'system' }, [{
+      action: 'UPDATE', entityType: 'User', entityId: legacy.user_id,
+      oldValue: { slug: previous.slug, display_name: previous.display_name },
+      newValue: { slug: legacy.slug, display_name: legacy.display_name },
+    }], revision);
+    assertDatabaseIntegrity_(database);
+    persistDatabase_(database, ['Users', 'Meta', 'AuditLog']);
+    return { migrated: true, user: publicUser_(legacy), revision: revision };
   } finally {
     lock.releaseLock();
   }

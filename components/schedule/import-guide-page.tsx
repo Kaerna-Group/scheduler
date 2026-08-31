@@ -7,7 +7,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useSchedule } from '@/hooks/use-schedule';
 import { buildLlmImportPrompt, scheduleImportExample } from '@/lib/schedule/import-guide';
@@ -66,6 +66,7 @@ export function ImportGuidePage() {
   const [errors, setErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const selectedUserName = schedule.users.find((user) => user.slug === selectedUser)?.displayName ?? schedule.user.displayName;
 
   useEffect(() => setToken(getStoredEditToken(schedule.user.slug)), [schedule.user.slug]);
 
@@ -152,7 +153,7 @@ export function ImportGuidePage() {
           <Select value={selectedUser} onValueChange={(value) => value && selectUser(value)}>
             <SelectTrigger aria-label="Користувач для імпорту" className="h-10 min-w-[210px] rounded-full border-[#dedacf] bg-white/80 px-3.5 text-xs font-semibold text-[#4f5959] shadow-none xl:h-11 xl:min-w-[240px] xl:text-sm">
               <UserRound className="size-3.5" />
-              <SelectValue />
+              <span className="min-w-0 flex-1 truncate text-left">{selectedUserName}</span>
             </SelectTrigger>
             <SelectContent align="center" sideOffset={7} className="min-w-[260px] rounded-[17px] border border-[#dedacf] bg-[#fffefb] p-1.5 shadow-[0_18px_50px_rgb(41_54_56/16%)]">
               {schedule.users.map((user) => <SelectItem key={user.id} value={user.slug} className="min-h-10 rounded-xl px-3 text-sm focus:bg-[#f0eee7]">{user.displayName}</SelectItem>)}

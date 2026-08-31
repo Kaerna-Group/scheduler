@@ -25,7 +25,7 @@
 4. Скопіюйте вміст `apps-script/dist/Code.gs` у файл `Code.gs` редактора.
 5. Замініть manifest на `apps-script/appsscript.json` у налаштуваннях проєкту.
 6. Запустіть функцію `setupScheduler()` і надайте дозволи.
-7. Скопіюйте `editTokens.tymofii` з результату виконання — відкритий токен більше ніде не зберігається.
+7. Скопіюйте `editTokens.ermolz` з результату виконання — відкритий токен більше ніде не зберігається.
 8. Оберіть **Deploy → New deployment → Web app**:
    - Execute as: **Me**;
    - Who has access: **Anyone**.
@@ -65,7 +65,7 @@ rotateSchedulerEditToken('zahar')
 ### Read
 
 ```text
-GET /exec?action=schedule&user=tymofii&semester=SEM-2026-FALL
+GET /exec?action=schedule&user=ermolz&semester=SEM-2026-FALL
 ```
 
 ### Preview import
@@ -73,7 +73,7 @@ GET /exec?action=schedule&user=tymofii&semester=SEM-2026-FALL
 ```json
 {
   "action": "previewImport",
-  "userSlug": "tymofii",
+  "userSlug": "ermolz",
   "editToken": "...",
   "baseRevision": 1,
   "importMode": "merge",
@@ -86,4 +86,6 @@ POST надсилається як `text/plain;charset=utf-8`, щоб Apps Scrip
 
 ## Початкові дані
 
-Seed містить поточний розклад Tymofii, включно зі Scrum group 3 та Кваліфікаційною роботою без Lessons. Для невідомих університетських кодів використані тимчасові значення `LOCAL-*`; їх потрібно замінити реальними кодами до імпорту розкладів інших користувачів.
+Seed містить поточний розклад Ermolz, включно зі Scrum group 3 та Кваліфікаційною роботою без Lessons. Для невідомих університетських кодів використані тимчасові значення `LOCAL-*`; їх потрібно замінити реальними кодами до імпорту розкладів інших користувачів.
+
+Для вже створеної таблиці після оновлення коду один раз запустіть `migrateTymofiiUserToErmolz()`. Функція змінює лише slug користувача `U001`, зберігає його token та enrollments і записує зміну в AuditLog.
