@@ -42,58 +42,182 @@ function createOfferingFromImport_(database, semester, subjectInput, actor, chan
   return offering;
 }
 
+function storedLessonViews_(database, offeringId) {
+  const groupById = {};
+  database.Groups.forEach(function (row) { groupById[row.group_id] = row; });
+
+  return database.Lessons
+    .filter(function (row) { return row.offering_id === offeringId && isActive_(row.active); })
+    .map(function (row) {
+      const groupNumbers = database.LessonGroups
+        .filter(function (link) { return link.lesson_id === row.lesson_id && groupById[link.group_id]; })
+        .map(function (link) { return Number(groupById[link.group_id].group_number); })
+        .sort(function (a, b) { return a - b; });
+      const weeks = database.LessonWeeks
+        .filter(function (link) { return link.lesson_id === row.lesson_id; })
+        .map(function (link) { return Number(link.week); })
+        .sort(function (a, b) { return a - b; });
+      return {
+        lessonId: row.lesson_id,
+        row: row,
+        canonical: {
+          type: row.type,
+          group: groupNumbers.length === 1 ? groupNumbers[0] : (groupNumbers.length ? groupNumbers : undefined),
+          day: row.day,
+          startTime: row.start_time,
+          endTime: row.end_time,
+          weeks: weeks,
+          room: row.room || undefined,
+          format: row.format,
+          teacher: row.teacher,
+        },
+      };
+    });
+}
+
+function normalizeImportedLessonForSync_(lesson) {
+  return {
+    id: typeof lesson.id === 'string' ? lesson.id : undefined,
+    type: lesson.type,
+    group: lesson.group === undefined ? undefined : Number(lesson.group),
+    day: lesson.day,
+    startTime: lesson.startTime,
+    endTime: lesson.endTime,
+    weeks: Array.from(new Set(lesson.weeks.map(Number))).sort(function (a, b) { return a - b; }),
+    room: lesson.room || undefined,
+    format: lesson.format,
+    teacher: String(lesson.teacher).trim(),
+  };
+}
+
+function lessonRuleSignature_(lesson) {
+  return JSON.stringify({
+    type: lesson.type,
+    group: lesson.group,
+    day: lesson.day,
+    startTime: lesson.startTime,
+    endTime: lesson.endTime,
+    room: lesson.room,
+    format: lesson.format,
+    teacher: lesson.teacher,
+  });
+}
+
+function lessonWeeksOverlap_(first, second) {
+  return first.some(function (week) { return second.indexOf(week) !== -1; });
+}
+
+function lessonTimesOverlap_(first, second) {
+  return first.startTime < second.endTime && second.startTime < first.endTime;
+}
+
+function lessonRulesConflict_(stored, imported) {
+  if (imported.id && imported.id === stored.lessonId) {
+    return lessonRuleSignature_(stored.canonical) !== lessonRuleSignature_(imported) ||
+      JSON.stringify(stored.canonical.weeks) !== JSON.stringify(imported.weeks);
+  }
+  return stored.canonical.type === imported.type &&
+    JSON.stringify(stored.canonical.group) === JSON.stringify(imported.group) &&
+    stored.canonical.day === imported.day &&
+    lessonWeeksOverlap_(stored.canonical.weeks, imported.weeks) &&
+    lessonTimesOverlap_(stored.canonical, imported);
+}
+
+function appendImportedLesson_(database, offering, lessonInput, actor, changes) {
+  requireRole_(actor, ['editor', 'admin']);
+  const lesson = {
+    lesson_id: newId_('LES'),
+    offering_id: offering.offering_id,
+    type: lessonInput.type,
+    day: lessonInput.day,
+    start_time: lessonInput.startTime,
+    end_time: lessonInput.endTime,
+    format: lessonInput.format,
+    room: lessonInput.room || '',
+    teacher: lessonInput.teacher,
+    active: 'yes',
+  };
+  database.Lessons.push(lesson);
+  lessonInput.weeks.forEach(function (week) {
+    database.LessonWeeks.push({ lesson_id: lesson.lesson_id, week: String(week) });
+  });
+  if (lessonInput.group !== undefined) {
+    const group = findOrCreateGroup_(database, offering, lessonInput.group, actor, changes);
+    database.LessonGroups.push({ lesson_id: lesson.lesson_id, group_id: group.group_id });
+  }
+  changes.push({
+    action: 'CREATE', entityType: 'Lesson', entityId: lesson.lesson_id,
+    oldValue: null, newValue: lessonInput,
+  });
+}
+
+function removeConflictingLessonWeeks_(database, stored, imported, changes) {
+  const removeEveryWeek = imported.id && imported.id === stored.lessonId;
+  const removedWeeks = removeEveryWeek
+    ? stored.canonical.weeks
+    : stored.canonical.weeks.filter(function (week) { return imported.weeks.indexOf(week) !== -1; });
+  database.LessonWeeks = database.LessonWeeks.filter(function (link) {
+    return link.lesson_id !== stored.lessonId || removedWeeks.indexOf(Number(link.week)) === -1;
+  });
+  const remainingWeeks = stored.canonical.weeks.filter(function (week) { return removedWeeks.indexOf(week) === -1; });
+  if (!remainingWeeks.length) stored.row.active = 'no';
+  changes.push({
+    action: remainingWeeks.length ? 'UPDATE' : 'DEACTIVATE',
+    entityType: 'Lesson',
+    entityId: stored.lessonId,
+    oldValue: stored.canonical,
+    newValue: remainingWeeks.length ? Object.assign({}, stored.canonical, { weeks: remainingWeeks }) : null,
+  });
+}
+
 function syncLessons_(database, offering, importedLessons, actor, allowSharedUpdates, changes, conflicts) {
   if (!importedLessons || !importedLessons.length) return;
-  const existing = canonicalLessonsForOffering_(database, offering.offering_id);
-  const incoming = canonicalImportedLessons_(importedLessons);
-  if (JSON.stringify(existing) === JSON.stringify(incoming)) return;
 
-  if (existing.length && (!allowSharedUpdates || ['editor', 'admin'].indexOf(actor.role) === -1)) {
-    conflicts.push({
-      code: 'COURSE_DATA_CONFLICT',
-      externalCode: offering.external_code,
-      offeringId: offering.offering_id,
-      stored: existing,
-      imported: incoming,
+  importedLessons.map(normalizeImportedLessonForSync_).forEach(function (incoming) {
+    const stored = storedLessonViews_(database, offering.offering_id);
+    const sameRule = stored.find(function (item) {
+      return lessonRuleSignature_(item.canonical) === lessonRuleSignature_(incoming);
     });
-    return;
-  }
-  requireRole_(actor, ['editor', 'admin']);
 
-  const oldLessons = database.Lessons.filter(function (row) {
-    return row.offering_id === offering.offering_id && isActive_(row.active);
-  });
-  oldLessons.forEach(function (row) { row.active = 'no'; });
-
-  importedLessons.forEach(function (lessonInput) {
-    const lesson = {
-      lesson_id: newId_('LES'),
-      offering_id: offering.offering_id,
-      type: lessonInput.type,
-      day: lessonInput.day,
-      start_time: lessonInput.startTime,
-      end_time: lessonInput.endTime,
-      format: lessonInput.format,
-      room: lessonInput.room || '',
-      teacher: String(lessonInput.teacher).trim(),
-      active: 'yes',
-    };
-    database.Lessons.push(lesson);
-    Array.from(new Set(lessonInput.weeks.map(Number))).sort(function (a, b) { return a - b; }).forEach(function (week) {
-      database.LessonWeeks.push({ lesson_id: lesson.lesson_id, week: String(week) });
-    });
-    if (lessonInput.group !== undefined) {
-      const group = findOrCreateGroup_(database, offering, lessonInput.group, actor, changes);
-      database.LessonGroups.push({ lesson_id: lesson.lesson_id, group_id: group.group_id });
+    if (sameRule) {
+      const missingWeeks = incoming.weeks.filter(function (week) {
+        return sameRule.canonical.weeks.indexOf(week) === -1;
+      });
+      if (missingWeeks.length) {
+        requireRole_(actor, ['editor', 'admin']);
+        missingWeeks.forEach(function (week) {
+          database.LessonWeeks.push({ lesson_id: sameRule.lessonId, week: String(week) });
+        });
+        changes.push({
+          action: 'EXTEND_WEEKS', entityType: 'Lesson', entityId: sameRule.lessonId,
+          oldValue: sameRule.canonical,
+          newValue: Object.assign({}, sameRule.canonical, {
+            weeks: sameRule.canonical.weeks.concat(missingWeeks).sort(function (a, b) { return a - b; }),
+          }),
+        });
+      }
+      return;
     }
-  });
 
-  changes.push({
-    action: existing.length ? 'UPDATE' : 'CREATE',
-    entityType: 'OfferingLessons',
-    entityId: offering.offering_id,
-    oldValue: existing,
-    newValue: incoming,
+    const incompatible = stored.filter(function (item) { return lessonRulesConflict_(item, incoming); });
+    if (incompatible.length && !allowSharedUpdates) {
+      conflicts.push({
+        code: 'COURSE_DATA_CONFLICT',
+        externalCode: offering.external_code,
+        offeringId: offering.offering_id,
+        stored: incompatible.map(function (item) { return item.canonical; }),
+        imported: incoming,
+      });
+      return;
+    }
+
+    if (incompatible.length) {
+      requireRole_(actor, ['editor', 'admin']);
+      incompatible.forEach(function (item) {
+        removeConflictingLessonWeeks_(database, item, incoming, changes);
+      });
+    }
+    appendImportedLesson_(database, offering, incoming, actor, changes);
   });
 }
 

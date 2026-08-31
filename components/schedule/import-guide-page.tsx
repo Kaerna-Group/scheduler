@@ -21,6 +21,8 @@ const rules = [
   ['Дисципліна', 'name обов’язковий; shortName, color, selectedGroup та lessons — необов’язкові. Додаткові поля не використовуй.'],
   ['Колір', 'Рекомендований формат #RRGGBB, наприклад #7b86c6.'],
   ['Обрана група', 'selectedGroup — додатне ціле число. Вона визначає, які групові заняття побачить користувач.'],
+  ['Персональне та спільне', 'selectedGroup належить користувачу. lessons належать спільній дисципліні та можуть містити правила різних груп.'],
+  ['Нова група', 'Додай lessons лише відомої з джерела групи. Сервер збереже раніше відомі групи та приєднає нову; вигадувати чужі групи не треба.'],
   ['Без занять', 'Дисципліна може мати lessons: [] — вона залишиться у переліку предметів.'],
   ['Одне правило', 'Один lesson описує незмінні день, час, тип, формат, викладача, аудиторію та групу для конкретного набору тижнів.'],
   ['Зміна умов', 'Якщо будь-яка умова змінюється між тижнями — створи окремий lesson.'],
@@ -186,7 +188,7 @@ export function ImportGuidePage() {
               <button onClick={() => setMode('replace')} className={`rounded-[15px] border p-3 text-left transition ${mode === 'replace' ? 'border-[#d48a60] bg-[#fff5ed]' : 'border-[#e3dfd5] bg-[#faf9f5]'}`}><div className="text-xs font-bold text-[#394143]">Replace my enrollments</div><div className="mt-1 text-[11px] leading-5 text-[#83847e]">Залишити користувачу лише дисципліни з цього JSON.</div></button>
             </div>
 
-            <label className="mt-3 flex items-start gap-3 rounded-[14px] bg-[#f3f1eb] p-3 text-xs leading-5 text-[#676b68]"><input type="checkbox" checked={allowSharedUpdates} onChange={(event) => setAllowSharedUpdates(event.target.checked)} className="mt-1" /><span><strong className="text-[#424a4b]">Дозволити спільні зміни.</strong> Увімкни лише якщо треба замінити назву або заняття вже відомої дисципліни для всіх користувачів.</span></label>
+            <label className="mt-3 flex items-start gap-3 rounded-[14px] bg-[#f3f1eb] p-3 text-xs leading-5 text-[#676b68]"><input type="checkbox" checked={allowSharedUpdates} onChange={(event) => setAllowSharedUpdates(event.target.checked)} className="mt-1" /><span><strong className="text-[#424a4b]">Дозволити конфліктні спільні зміни.</strong> Нова група додається без цього прапорця. Увімкни його лише для точкової заміни правила, яке перетинається з уже збереженим.</span></label>
 
             <Textarea value={importText} onChange={(event) => setImportText(event.target.value)} spellCheck={false} className="mt-4 min-h-[420px] rounded-[17px] bg-[#fbfaf7] font-mono text-xs leading-relaxed" aria-label="JSON розкладу" />
 
@@ -214,7 +216,7 @@ export function ImportGuidePage() {
               <ol className="mt-4 space-y-3 text-xs leading-5 text-[#737671]">{['Вибери правильного користувача.', 'Встав його персональний token.', 'Встав JSON та натисни «Перевірити».', 'Переглянь помилки або план змін.', 'Лише потім натисни «Імпортувати».'].map((step, index) => <li key={step} className="flex gap-3"><span className="grid size-6 shrink-0 place-items-center rounded-full bg-[#efede7] text-[10px] font-bold text-[#596061]">{index + 1}</span><span>{step}</span></li>)}</ol>
             </section>
 
-            <section className="rounded-[24px] border border-[#e8c9bc] bg-[#fff8f3] p-5"><div className="flex gap-3"><ShieldAlert className="mt-0.5 size-5 shrink-0 text-[#c36e45]" /><div><h2 className="text-sm font-bold text-[#6f4634]">Спільні дані</h2><p className="mt-2 text-xs leading-6 text-[#916854]">Назва та lessons дисципліни зі спільним externalCode використовуються всіма. Без прапорця імпорт з відмінностями буде зупинено без запису.</p></div></div></section>
+            <section className="rounded-[24px] border border-[#e8c9bc] bg-[#fff8f3] p-5"><div className="flex gap-3"><ShieldAlert className="mt-0.5 size-5 shrink-0 text-[#c36e45]" /><div><h2 className="text-sm font-bold text-[#6f4634]">Спільні дані</h2><p className="mt-2 text-xs leading-6 text-[#916854]">Назва та lessons дисципліни зі спільним externalCode використовуються всіма. Нові групи й непересічні правила додаються до offering, а відсутні в JSON правила не видаляються.</p></div></div></section>
           </aside>
         </div>
 
@@ -234,7 +236,7 @@ export function ImportGuidePage() {
           <div className="rounded-[24px] border border-[#e3dfd5] bg-[#293638] p-5 text-white sm:p-6"><div className="flex items-center justify-between gap-3"><h2 className="text-xl font-semibold tracking-[-0.035em]">Приклад JSON</h2><CheckCircle2 className="size-5 text-[#8fc39f]" /></div><pre className="mt-5 max-h-[500px] overflow-auto rounded-[16px] bg-black/15 p-4 text-[11px] leading-5 text-white/75"><code>{JSON.stringify(scheduleImportExample, null, 2)}</code></pre></div>
         </section>
 
-        <section className="mt-8 rounded-[24px] border border-[#e6b8b1] bg-[#fff5f2] p-5 sm:p-6"><div className="flex gap-4"><AlertTriangle className="mt-0.5 size-5 shrink-0 text-[#ba5d4e]" /><div><h2 className="text-sm font-bold text-[#75473f]">Merge, Replace та конфлікти</h2><ul className="mt-3 space-y-2 text-xs leading-6 text-[#8c625b]"><li>• Merge не видаляє інші підписки користувача.</li><li>• Replace прибирає лише підписки цього користувача в поточному семестрі, яких немає у JSON; спільні предмети та заняття фізично не видаляються.</li><li>• Однаковий externalCode із відмінною назвою або lessons створює конфлікт. Без дозволу спільних змін весь імпорт зупиняється.</li><li>• Якщо revision застарів, онови дані, повтори перевірку та імпорт.</li><li>• «Перевірити» нічого не записує. Сервер застосовує успішний імпорт цілісно під блокуванням і веде AuditLog.</li></ul></div></div></section>
+        <section className="mt-8 rounded-[24px] border border-[#e6b8b1] bg-[#fff5f2] p-5 sm:p-6"><div className="flex gap-4"><AlertTriangle className="mt-0.5 size-5 shrink-0 text-[#ba5d4e]" /><div><h2 className="text-sm font-bold text-[#75473f]">Merge, Replace та конфлікти</h2><ul className="mt-3 space-y-2 text-xs leading-6 text-[#8c625b]"><li>• Merge не видаляє інші підписки користувача.</li><li>• Replace прибирає лише підписки цього користувача в поточному семестрі, яких немає у JSON; спільні предмети та заняття фізично не видаляються.</li><li>• Точний збіг lesson не дублюється; додаткові тижні того самого правила приєднуються; нова група або непересічне заняття додається до offering.</li><li>• Конфлікт виникає лише коли правило тієї самої групи, типу, дня й тижнів перетинається за часом, але має інші дані. Дозвіл спільних змін замінює тільки конфліктні тижні.</li><li>• Якщо revision застарів, онови дані, повтори перевірку та імпорт.</li><li>• «Перевірити» нічого не записує. Сервер застосовує успішний імпорт цілісно під блокуванням і веде AuditLog.</li></ul></div></div></section>
       </div>
     </main>
   );

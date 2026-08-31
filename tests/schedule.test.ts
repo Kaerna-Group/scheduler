@@ -74,6 +74,8 @@ describe('import contract', () => {
     expect(prompt).toContain('"semesterId": "SEM-2026-FALL"');
     expect(prompt).toContain('от 1 до 14');
     expect(prompt).toContain('Один объект lesson');
+    expect(prompt).toContain('selectedGroup — персональный выбор пользователя');
+    expect(prompt).toContain('сервер сохранит уже известные группы');
   });
 });
 

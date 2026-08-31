@@ -9,7 +9,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "vitest run",
+    "test": "vitest run && node scripts/test-apps-script-import.mjs",
     "apps-script:bundle": "node scripts/bundle-apps-script.mjs",
     "lint": "oxlint",
     "format": "oxfmt"
