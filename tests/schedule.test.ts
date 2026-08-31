@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { fallbackSchedule } from '@/data/fallback-schedule';
 import { buildLlmImportPrompt, scheduleImportExample } from '@/lib/schedule/import-guide';
 import { exportSchedule, validateScheduleImport } from '@/lib/schedule/import';
+import { mergeScheduleUsers } from '@/lib/schedule/repository';
 import type { Lesson } from '@/lib/schedule/types';
 import { getConflictIds, getLessonsForDay, lessonsOverlap } from '@/lib/schedule/utils';
 
@@ -85,5 +86,17 @@ describe('seed fixtures', () => {
     expect(names).toContain('Основи фреймворку Скрам');
     expect(names).toContain('Кваліфікаційна робота');
     expect(names).not.toContain('Інформаційна безпека цільових систем');
+  });
+
+  it('merges cached user lists by slug and keeps the newest profile', () => {
+    const merged = mergeScheduleUsers(
+      [{ id: '1', slug: 'anna', displayName: 'Anna', role: 'user' }],
+      [
+        { id: '1', slug: 'anna', displayName: 'Анна', role: 'editor' },
+        { id: '2', slug: 'bohdan', displayName: 'Богдан', role: 'user' },
+      ],
+    );
+    expect(merged).toHaveLength(2);
+    expect(merged.find((user) => user.slug === 'anna')).toMatchObject({ displayName: 'Анна', role: 'editor' });
   });
 });

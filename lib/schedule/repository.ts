@@ -1,8 +1,9 @@
 import { fallbackSchedule } from '@/data/fallback-schedule';
-import type { ScheduleImportV1, UserSchedule } from '@/lib/schedule/types';
+import type { ScheduleImportV1, ScheduleUser, UserSchedule } from '@/lib/schedule/types';
 
 const API_URL = (import.meta.env.VITE_SCHEDULE_API_URL as string | undefined)?.trim() ?? '';
 const CACHE_PREFIX = 'scheduler_cache_v1:';
+const USERS_CACHE_KEY = 'scheduler_users_v1';
 const EDIT_TOKEN_PREFIX = 'scheduler_edit_token_v1:';
 
 interface ApiSuccess<T> {
@@ -49,15 +50,80 @@ export function hasRemoteApi() {
   return Boolean(API_URL);
 }
 
+function isScheduleUser(value: unknown): value is ScheduleUser {
+  if (!value || typeof value !== 'object') return false;
+  const user = value as Partial<ScheduleUser>;
+  return typeof user.id === 'string' && typeof user.slug === 'string' &&
+    typeof user.displayName === 'string' && ['user', 'editor', 'admin'].includes(String(user.role));
+}
+
+export function mergeScheduleUsers(...collections: ScheduleUser[][]): ScheduleUser[] {
+  const users = new Map<string, ScheduleUser>();
+  collections.flat().forEach((user) => users.set(user.slug, user));
+  return [...users.values()].sort((first, second) => first.displayName.localeCompare(second.displayName));
+}
+
+function writeCachedUsers(users: ScheduleUser[]) {
+  try {
+    localStorage.setItem(USERS_CACHE_KEY, JSON.stringify(mergeScheduleUsers(users)));
+  } catch {
+    // The schedule remains usable when browser storage is unavailable.
+  }
+}
+
+function usersFromJson(raw: string | null): ScheduleUser[] {
+  if (!raw) return [];
+  try {
+    const value: unknown = JSON.parse(raw);
+    if (Array.isArray(value)) return value.filter(isScheduleUser);
+    if (value && typeof value === 'object' && 'users' in value && Array.isArray(value.users)) {
+      return value.users.filter(isScheduleUser);
+    }
+  } catch {
+    // Ignore one damaged cache entry and keep reading the others.
+  }
+  return [];
+}
+
+export function readCachedUsers(): ScheduleUser[] {
+  try {
+    const dedicatedCache = usersFromJson(localStorage.getItem(USERS_CACHE_KEY));
+    if (dedicatedCache.length) return mergeScheduleUsers(dedicatedCache);
+
+    const collections: ScheduleUser[][] = [fallbackSchedule.users];
+
+    // Migrate user lists already embedded in per-user schedule caches.
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key?.startsWith(CACHE_PREFIX)) continue;
+      collections.push(usersFromJson(localStorage.getItem(key)));
+    }
+
+    const users = mergeScheduleUsers(...collections);
+    writeCachedUsers(users);
+    return users;
+  } catch {
+    return fallbackSchedule.users;
+  }
+}
+
 export function getFallbackSchedule(userSlug = fallbackSchedule.user.slug): UserSchedule {
-  const user = fallbackSchedule.users.find((item) => item.slug === userSlug) ?? fallbackSchedule.user;
-  return { ...fallbackSchedule, user };
+  const users = readCachedUsers();
+  const user = users.find((item) => item.slug === userSlug) ?? fallbackSchedule.user;
+  return { ...fallbackSchedule, users, user };
 }
 
 export function readCachedSchedule(userSlug: string, semesterId: string): UserSchedule | null {
   try {
     const raw = localStorage.getItem(cacheKey(userSlug, semesterId));
-    return raw ? (JSON.parse(raw) as UserSchedule) : null;
+    if (!raw) return null;
+    const schedule = JSON.parse(raw) as UserSchedule;
+    const users = mergeScheduleUsers(schedule.users, readCachedUsers());
+    return {
+      ...schedule,
+      users,
+      user: users.find((item) => item.slug === userSlug) ?? schedule.user,
+    };
   } catch {
     return null;
   }
@@ -66,6 +132,7 @@ export function readCachedSchedule(userSlug: string, semesterId: string): UserSc
 function writeCachedSchedule(schedule: UserSchedule) {
   try {
     localStorage.setItem(cacheKey(schedule.user.slug, schedule.semester.id), JSON.stringify(schedule));
+    writeCachedUsers(schedule.users);
   } catch {
     // Cache is a best-effort acceleration layer.
   }
