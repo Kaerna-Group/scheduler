@@ -3,11 +3,12 @@
 import { useMemo, useState } from 'react';
 import {
   AlertTriangle, ArrowLeft, ArrowRight, BookOpenText, CalendarDays,
-  ChevronDown, Clock3, CloudOff, FileJson2, Laptop, MapPin, Radio, RefreshCw, Sparkles, UserRound,
+  Clock3, CloudOff, FileJson2, Laptop, MapPin, Radio, RefreshCw, Sparkles, UserRound,
 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useSchedule } from '@/hooks/use-schedule';
 import type { Lesson, Subject, WeekDay } from '@/lib/schedule/types';
 import {
@@ -170,7 +171,7 @@ export function ScheduleApp() {
       </div>
 
       <header className="relative border-b border-[#e8e4da]/80 bg-[#f8f6f0]/85 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-[1240px] flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-7 lg:px-10">
+        <div className="mx-auto flex max-w-[1360px] flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-7 lg:px-10 xl:py-5">
           <div className="flex items-center gap-3">
             <div className="grid size-10 place-items-center rounded-[14px] bg-[#263335] text-[#f8f6f0] shadow-sm"><CalendarDays className="size-[19px]" strokeWidth={1.8} /></div>
             <div>
@@ -179,37 +180,39 @@ export function ScheduleApp() {
             </div>
           </div>
 
-          <label className="relative order-3 flex h-10 min-w-[150px] flex-1 items-center gap-2 rounded-full border border-[#dedacf] bg-white/75 px-3.5 text-xs text-[#626764] sm:order-none sm:max-w-[190px]">
-            <UserRound className="size-3.5 shrink-0 text-[#7e8986]" />
-            <select
-              value={selectedUser}
-              onChange={(event) => {
+          <Select
+            value={selectedUser}
+            onValueChange={(value) => {
+              if (value) {
                 setSubjectId('all');
-                selectUser(event.target.value);
+                selectUser(value);
               }}
-              className="min-w-0 flex-1 appearance-none bg-transparent pr-5 font-semibold outline-none"
-              aria-label="Користувач розкладу"
-            >
-              {schedule.users.map((user) => <option key={user.id} value={user.slug}>{user.displayName}</option>)}
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-3 size-3.5" />
-          </label>
+            }
+          >
+            <SelectTrigger aria-label="Користувач розкладу" className="order-3 h-10 min-w-[170px] flex-1 rounded-full border-[#dedacf] bg-white/80 px-3.5 text-xs font-semibold text-[#4f5959] shadow-none sm:order-none sm:max-w-[220px] xl:h-11 xl:max-w-[240px] xl:text-sm">
+              <UserRound className="size-3.5 shrink-0 text-[#7e8986]" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent align="start" sideOffset={7} className="min-w-[260px] rounded-[17px] border border-[#dedacf] bg-[#fffefb] p-1.5 shadow-[0_18px_50px_rgb(41_54_56/16%)]">
+              {schedule.users.map((user) => <SelectItem key={user.id} value={user.slug} className="min-h-10 rounded-xl px-3 text-sm focus:bg-[#f0eee7]">{user.displayName}</SelectItem>)}
+            </SelectContent>
+          </Select>
 
           <nav className="hidden items-center rounded-full border border-[#e2ded4] bg-white/70 p-1 md:flex" aria-label="Вигляд розкладу">
             {([['today', 'Сьогодні'], ['week', 'Тиждень'], ['subjects', 'Предмети']] as const).map(([value, label]) => (
               <button key={value} onClick={() => setView(value)} className={cn(
-                'rounded-full px-4 py-2 text-xs font-semibold transition',
+                'rounded-full px-4 py-2 text-xs font-semibold transition xl:px-5 xl:py-2.5 xl:text-sm',
                 view === value ? 'bg-[#293638] text-white shadow-sm' : 'text-[#777872] hover:text-[#293638]',
               )}>{label}</button>
             ))}
           </nav>
 
           <div className="flex items-center gap-2">
-            <a href="#/import" className="inline-flex h-10 items-center justify-center gap-1.5 rounded-full border border-[#dedacf] bg-white/80 px-3.5 text-xs font-semibold text-[#293638] transition hover:bg-white">
+            <a href="#/import" className="inline-flex h-10 items-center justify-center gap-1.5 rounded-full border border-[#dedacf] bg-white/80 px-3.5 text-xs font-semibold text-[#293638] transition hover:bg-white xl:h-11 xl:px-4 xl:text-sm">
               <FileJson2 className="size-3.5" />
               <span className="hidden sm:inline">Імпорт</span>
             </a>
-            <Button variant="outline" onClick={goToToday} className="h-10 rounded-full border-[#dedacf] bg-white/80 px-4 text-xs font-semibold text-[#394346] shadow-none hover:bg-white">
+            <Button variant="outline" onClick={goToToday} className="h-10 rounded-full border-[#dedacf] bg-white/80 px-4 text-xs font-semibold text-[#394346] shadow-none hover:bg-white xl:h-11 xl:px-5 xl:text-sm">
               <Sparkles className="size-3.5 text-[#e08b5b]" />
               <span className="hidden xl:inline">До сьогодні</span>
               <span className="xl:hidden">Сьогодні</span>
@@ -218,8 +221,8 @@ export function ScheduleApp() {
         </div>
       </header>
 
-      <div className="relative mx-auto max-w-[1240px] px-4 pb-24 pt-6 sm:px-7 sm:pt-8 lg:px-10">
-        <section className="rounded-[26px] border border-[#e5e1d7] bg-white/70 p-4 shadow-[0_16px_55px_rgb(46_52_50/5%)] backdrop-blur-sm sm:p-5">
+      <div className="relative mx-auto max-w-[1360px] px-4 pb-24 pt-6 sm:px-7 sm:pt-8 lg:px-10">
+        <section className="rounded-[26px] border border-[#e5e1d7] bg-white/70 p-4 shadow-[0_16px_55px_rgb(46_52_50/5%)] backdrop-blur-sm sm:p-5 xl:p-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-2">
               <Button aria-label="Попередній тиждень" variant="outline" size="icon-lg" disabled={week === 1} onClick={() => chooseWeek(Math.max(1, week - 1))} className="rounded-full border-[#dfdbd1] bg-white shadow-none"><ArrowLeft /></Button>
@@ -230,14 +233,16 @@ export function ScheduleApp() {
               <Button aria-label="Наступний тиждень" variant="outline" size="icon-lg" disabled={week === semester.weeksCount} onClick={() => chooseWeek(Math.min(semester.weeksCount, week + 1))} className="rounded-full border-[#dfdbd1] bg-white shadow-none"><ArrowRight /></Button>
             </div>
 
-            <label className="relative flex min-w-[230px] flex-1 items-center gap-2 rounded-full border border-[#dfdbd1] bg-white px-4 py-2.5 text-xs text-[#686b68] sm:max-w-[290px]">
-              <BookOpenText className="size-4 shrink-0 text-[#88918f]" />
-              <select value={subjectId} onChange={(event) => setSubjectId(event.target.value)} className="min-w-0 flex-1 appearance-none bg-transparent pr-6 font-semibold outline-none" aria-label="Фільтр за предметом">
-                <option value="all">Усі дисципліни</option>
-                {subjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.shortName}</option>)}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-4 size-3.5" />
-            </label>
+            <Select value={subjectId} onValueChange={(value) => value && setSubjectId(value)}>
+              <SelectTrigger aria-label="Фільтр за предметом" className="h-10 min-w-[230px] flex-1 rounded-full border-[#dfdbd1] bg-white px-4 text-xs font-semibold text-[#5c6260] shadow-none sm:max-w-[320px] xl:h-11 xl:max-w-[360px] xl:text-sm">
+                <BookOpenText className="size-4 shrink-0 text-[#88918f]" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent align="end" sideOffset={7} className="min-w-[min(440px,calc(100vw-24px))] rounded-[17px] border border-[#dedacf] bg-[#fffefb] p-1.5 shadow-[0_18px_50px_rgb(41_54_56/16%)]">
+                <SelectItem value="all" className="min-h-10 rounded-xl px-3 text-sm font-semibold focus:bg-[#f0eee7]">Усі дисципліни</SelectItem>
+                {subjects.map((subject) => <SelectItem key={subject.id} value={subject.id} className="min-h-10 whitespace-normal rounded-xl px-3 py-2 text-sm leading-5 focus:bg-[#f0eee7]">{subject.shortName}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="mt-5 grid grid-cols-7 gap-1.5 sm:gap-2">
@@ -269,7 +274,7 @@ export function ScheduleApp() {
           ))}
         </nav>
 
-        <div className="mt-7 grid gap-7 lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-10">
+        <div className="mt-7 grid gap-7 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-10 2xl:grid-cols-[minmax(0,1fr)_340px]">
           <div>
             <div className="mb-6 flex items-end justify-between gap-4">
               <div>

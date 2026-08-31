@@ -7,6 +7,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useSchedule } from '@/hooks/use-schedule';
 import { buildLlmImportPrompt, scheduleImportExample } from '@/lib/schedule/import-guide';
@@ -142,19 +143,22 @@ export function ImportGuidePage() {
       </div>
 
       <header className="relative border-b border-[#e8e4da]/80 bg-[#f8f6f0]/90 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-[1240px] flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-7 lg:px-10">
+        <div className="mx-auto flex max-w-[1360px] flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-7 lg:px-10 xl:py-5">
           <a href="#/" className="inline-flex h-10 items-center gap-2 rounded-full px-2 text-sm font-semibold text-[#4d5657] hover:text-[#273033]"><ArrowLeft className="size-4" /> До розкладу</a>
-          <label className="relative flex h-10 min-w-[190px] items-center gap-2 rounded-full border border-[#dedacf] bg-white/80 px-3.5 text-xs text-[#626764]">
-            <UserRound className="size-3.5" />
-            <select value={selectedUser} onChange={(event) => selectUser(event.target.value)} className="min-w-0 flex-1 appearance-none bg-transparent font-semibold outline-none" aria-label="Користувач для імпорту">
-              {schedule.users.map((user) => <option key={user.id} value={user.slug}>{user.displayName}</option>)}
-            </select>
-          </label>
+          <Select value={selectedUser} onValueChange={(value) => value && selectUser(value)}>
+            <SelectTrigger aria-label="Користувач для імпорту" className="h-10 min-w-[210px] rounded-full border-[#dedacf] bg-white/80 px-3.5 text-xs font-semibold text-[#4f5959] shadow-none xl:h-11 xl:min-w-[240px] xl:text-sm">
+              <UserRound className="size-3.5" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent align="center" sideOffset={7} className="min-w-[260px] rounded-[17px] border border-[#dedacf] bg-[#fffefb] p-1.5 shadow-[0_18px_50px_rgb(41_54_56/16%)]">
+              {schedule.users.map((user) => <SelectItem key={user.id} value={user.slug} className="min-h-10 rounded-xl px-3 text-sm focus:bg-[#f0eee7]">{user.displayName}</SelectItem>)}
+            </SelectContent>
+          </Select>
           <Badge variant="secondary" className="h-8 rounded-full border-0 bg-[#ebe8df] px-3 text-[10px] font-bold uppercase tracking-[0.08em] text-[#6f716c]">JSON schema v1</Badge>
         </div>
       </header>
 
-      <div className="relative mx-auto max-w-[1240px] px-4 pb-24 pt-8 sm:px-7 lg:px-10">
+      <div className="relative mx-auto max-w-[1360px] px-4 pb-24 pt-8 sm:px-7 lg:px-10 xl:pt-10">
         <div className="flex flex-wrap items-end justify-between gap-5">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#c47449]">Єдиний спосіб редагування</p>
@@ -164,8 +168,8 @@ export function ImportGuidePage() {
           <div className="text-right text-xs leading-6 text-[#8b8d87]"><div>{schedule.semester.title} · {schedule.semester.weeksCount} тижнів</div><div>{source === 'remote' ? `Синхронізовано · revision ${schedule.revision}` : 'Показано локальні дані'}</div></div>
         </div>
 
-        <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1.45fr)_minmax(310px,.75fr)]">
-          <section className="rounded-[26px] border border-[#e3dfd5] bg-white/80 p-4 shadow-[0_16px_55px_rgb(46_52_50/6%)] sm:p-6">
+        <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1.45fr)_minmax(330px,.75fr)] xl:gap-8">
+          <section className="rounded-[26px] border border-[#e3dfd5] bg-white/80 p-4 shadow-[0_16px_55px_rgb(46_52_50/6%)] sm:p-6 xl:p-7">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div><h2 className="text-xl font-semibold tracking-[-0.035em] text-[#293234]">JSON для імпорту</h2><p className="mt-1 text-xs text-[#8a8c86]">Користувач: {schedule.user.displayName}</p></div>
               <div className="flex flex-wrap gap-2">

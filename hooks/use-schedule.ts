@@ -60,13 +60,16 @@ export function useSchedule() {
     return () => requestRef.current?.abort();
   }, [refresh, selectedUser]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(USER_KEY, selectedUser);
+    } catch {
+      // The selection still remains in memory when storage is unavailable.
+    }
+  }, [selectedUser]);
+
   const selectUser = useCallback((userSlug: string) => {
     setSelectedUserState(userSlug);
-    try {
-      localStorage.setItem(USER_KEY, userSlug);
-    } catch {
-      // Selection remains in memory.
-    }
     const cached = readCachedSchedule(userSlug, schedule.semester.id);
     if (cached) {
       setSchedule(cached);
