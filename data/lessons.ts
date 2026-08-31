@@ -13,6 +13,11 @@ export const lessons: Lesson[] = [
     room: '1-310', format: 'offline', teacher: 'Я. І. Вознюк',
   },
   {
+    id: 'scrum-framework-group-3', subjectId: 'scrum-framework', type: 'group', group: 3,
+    day: 'thursday', startTime: '15:00', endTime: '16:20', weeks: weeks(1, 14),
+    format: 'online', teacher: 'О. О. Палієнко',
+  },
+  {
     id: 'web-security-lecture', subjectId: 'web-security', type: 'lecture',
     day: 'friday', startTime: '10:00', endTime: '11:20', weeks: weeks(1, 10),
     room: '1-225', format: 'offline', teacher: 'Т. А. Бабич',
@@ -21,16 +26,6 @@ export const lessons: Lesson[] = [
     id: 'web-security-group-4', subjectId: 'web-security', type: 'group', group: 4,
     day: 'friday', startTime: '16:30', endTime: '17:50', weeks: weeks(1, 10),
     room: '1-331', format: 'offline', teacher: 'Т. А. Бабич',
-  },
-  {
-    id: 'target-security-lecture', subjectId: 'target-security', type: 'lecture',
-    day: 'wednesday', startTime: '11:40', endTime: '13:00', weeks: weeks(3, 9),
-    format: 'online', teacher: 'Вакансія',
-  },
-  {
-    id: 'target-security-group-1', subjectId: 'target-security', type: 'group', group: 1,
-    day: 'wednesday', startTime: '13:30', endTime: '14:50', weeks: weeks(3, 10),
-    format: 'online', teacher: 'Вакансія',
   },
   {
     id: 'cryptonomics-lecture', subjectId: 'cryptonomics', type: 'lecture',

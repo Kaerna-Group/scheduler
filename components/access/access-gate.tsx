@@ -1,4 +1,4 @@
-import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, type SyntheticEvent, useState } from 'react';
 import { CalendarDays, KeyRound, LockKeyhole, ShieldCheck } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -14,20 +14,18 @@ async function hashPin(pin: string) {
 }
 
 export function AccessGate({ children }: { children: ReactNode }) {
-  const [status, setStatus] = useState<'checking' | 'locked' | 'unlocked'>('checking');
+  const [status, setStatus] = useState<'locked' | 'unlocked'>(() => {
+    try {
+      return localStorage.getItem(ACCESS_KEY) === 'granted' ? 'unlocked' : 'locked';
+    } catch {
+      return 'locked';
+    }
+  });
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    try {
-      setStatus(localStorage.getItem(ACCESS_KEY) === 'granted' ? 'unlocked' : 'locked');
-    } catch {
-      setStatus('locked');
-    }
-  }, []);
-
-  async function unlock(event: FormEvent<HTMLFormElement>) {
+  async function unlock(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pin.length !== 4 || busy) return;
 
@@ -79,12 +77,8 @@ export function AccessGate({ children }: { children: ReactNode }) {
           </p>
         </div>
 
-        {status === 'checking' ? (
-          <div className="mt-8 flex h-[126px] items-center justify-center text-sm text-[#92938d]">Перевіряю доступ…</div>
-        ) : (
           <form className="mt-8" onSubmit={unlock}>
             <InputOTP
-              autoFocus
               maxLength={4}
               inputMode="numeric"
               pattern="[0-9]*"
@@ -118,7 +112,6 @@ export function AccessGate({ children }: { children: ReactNode }) {
               {busy ? 'Перевіряю…' : 'Відкрити розклад'}
             </Button>
           </form>
-        )}
 
         <p className="mt-6 text-center text-[11px] leading-relaxed text-[#a09f98]">
           Локальний захист від випадкових відвідувачів

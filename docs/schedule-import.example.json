@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "semesterId": "SEM-2026-FALL",
+  "subjects": [
+    {
+      "externalCode": "565095",
+      "name": "Основи фреймворку Скрам",
+      "shortName": "Основи Скрам",
+      "color": "#7b86c6",
+      "selectedGroup": 3,
+      "lessons": [
+        {
+          "type": "group",
+          "group": 3,
+          "day": "thursday",
+          "startTime": "15:00",
+          "endTime": "16:20",
+          "weeks": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+          "format": "online",
+          "teacher": "О. О. Палієнко"
+        }
+      ]
+    },
+    {
+      "externalCode": "LOCAL-QUALIFICATION",
+      "name": "Кваліфікаційна робота",
+      "shortName": "Кваліфікаційна робота",
+      "color": "#a276c7",
+      "selectedGroup": 2,
+      "lessons": []
+    }
+  ]
+}
