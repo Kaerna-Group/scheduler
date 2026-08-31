@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle, ArrowLeft, Check, CheckCircle2, Clipboard, Download, FileJson2,
-  KeyRound, RefreshCw, ShieldAlert, Upload, UserRound,
+  Fingerprint, KeyRound, RefreshCw, ShieldAlert, Upload, UserRound,
 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
@@ -47,6 +47,10 @@ function downloadJson(filename: string, value: unknown) {
   anchor.download = filename;
   anchor.click();
   URL.revokeObjectURL(url);
+}
+
+function safeFilename(value: string) {
+  return value.trim().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'user';
 }
 
 export function ImportGuidePage() {
@@ -203,7 +207,7 @@ export function ImportGuidePage() {
             <div className="mt-4 grid gap-2 sm:grid-cols-3">
               <Button variant="outline" onClick={() => previewOrImport(true)} disabled={busy} className="h-11 rounded-[14px]"><FileJson2 className="size-4" /> Перевірити</Button>
               <Button onClick={() => previewOrImport(false)} disabled={busy || !remoteConfigured} className="h-11 rounded-[14px]"><Upload className="size-4" /> Імпортувати</Button>
-              <Button variant="outline" onClick={() => downloadJson(`schedule-${schedule.user.slug}.json`, exported)} className="h-11 rounded-[14px]"><Download className="size-4" /> Експортувати</Button>
+              <Button variant="outline" onClick={() => downloadJson(`schedule-${safeFilename(schedule.user.displayName)}.json`, exported)} className="h-11 rounded-[14px]"><Download className="size-4" /> Експортувати</Button>
             </div>
             <Button variant="ghost" onClick={refresh} disabled={loading || !remoteConfigured} className="mt-2 w-full rounded-xl text-xs"><RefreshCw className={loading ? 'size-3.5 animate-spin' : 'size-3.5'} /> Оновити дані перед імпортом</Button>
           </section>
@@ -221,6 +225,20 @@ export function ImportGuidePage() {
             </section>
 
             <section className="rounded-[24px] border border-[#e8c9bc] bg-[#fff8f3] p-5"><div className="flex gap-3"><ShieldAlert className="mt-0.5 size-5 shrink-0 text-[#c36e45]" /><div><h2 className="text-sm font-bold text-[#6f4634]">Спільні дані</h2><p className="mt-2 text-xs leading-6 text-[#916854]">Назва та lessons дисципліни зі спільним externalCode використовуються всіма. Нові групи й непересічні правила додаються до offering, а відсутні в JSON правила не видаляються.</p></div></div></section>
+
+            <details className="group rounded-[24px] border border-[#e3dfd5] bg-white/75 p-5">
+              <summary className="flex cursor-pointer list-none items-center gap-3 text-sm font-bold text-[#394143]">
+                <Fingerprint className="size-4 text-[#7d8986]" />
+                Технічні дані користувача
+                <span className="ml-auto text-[10px] font-semibold text-[#9a9b95] group-open:hidden">Показати</span>
+              </summary>
+              <dl className="mt-4 grid grid-cols-[110px_minmax(0,1fr)] gap-x-3 gap-y-2 border-t border-[#ebe7de] pt-4 text-xs">
+                <dt className="text-[#8b8d87]">display_name</dt><dd className="font-semibold text-[#343d3e]">{schedule.user.displayName}</dd>
+                <dt className="text-[#8b8d87]">slug</dt><dd className="break-all font-mono text-[#4c5556]">{schedule.user.slug}</dd>
+                <dt className="text-[#8b8d87]">user_id</dt><dd className="break-all font-mono text-[#4c5556]">{schedule.user.id}</dd>
+                <dt className="text-[#8b8d87]">role</dt><dd className="font-mono text-[#4c5556]">{schedule.user.role}</dd>
+              </dl>
+            </details>
           </aside>
         </div>
 

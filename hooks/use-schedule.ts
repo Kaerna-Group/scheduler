@@ -6,6 +6,7 @@ import {
   getFallbackSchedule,
   hasRemoteApi,
   readCachedSchedule,
+  readCachedUsers,
 } from '@/lib/schedule/repository';
 import type { ScheduleSource, UserSchedule } from '@/lib/schedule/types';
 
@@ -13,7 +14,9 @@ const USER_KEY = 'scheduler_selected_user_v1';
 
 function initialUser() {
   try {
-    return localStorage.getItem(USER_KEY) ?? 'tymofii';
+    const users = readCachedUsers();
+    const stored = localStorage.getItem(USER_KEY);
+    return users.some((user) => user.slug === stored) ? String(stored) : (users[0]?.slug ?? 'tymofii');
   } catch {
     return 'tymofii';
   }
