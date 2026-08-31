@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { fallbackSchedule } from '@/data/fallback-schedule';
+import { buildLlmImportPrompt, scheduleImportExample } from '@/lib/schedule/import-guide';
 import { exportSchedule, validateScheduleImport } from '@/lib/schedule/import';
 import type { Lesson } from '@/lib/schedule/types';
 import { getConflictIds, getLessonsForDay, lessonsOverlap } from '@/lib/schedule/utils';
@@ -64,6 +65,15 @@ describe('import contract', () => {
     });
     expect(validation.errors.some((error) => error.includes('дублюється'))).toBe(true);
     expect(validation.errors.some((error) => error.includes('діапазоном'))).toBe(true);
+  });
+
+  it('keeps the published example and LLM prompt aligned with schema v1', () => {
+    expect(validateScheduleImport(scheduleImportExample, 14).errors).toEqual([]);
+    const prompt = buildLlmImportPrompt('SEM-2026-FALL', 14);
+    expect(prompt).toContain('ТОЛЬКО валидный JSON');
+    expect(prompt).toContain('"semesterId": "SEM-2026-FALL"');
+    expect(prompt).toContain('от 1 до 14');
+    expect(prompt).toContain('Один объект lesson');
   });
 });
 

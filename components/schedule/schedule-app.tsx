@@ -3,12 +3,11 @@
 import { useMemo, useState } from 'react';
 import {
   AlertTriangle, ArrowLeft, ArrowRight, BookOpenText, CalendarDays,
-  ChevronDown, Clock3, CloudOff, Laptop, MapPin, Radio, RefreshCw, Sparkles, UserRound,
+  ChevronDown, Clock3, CloudOff, FileJson2, Laptop, MapPin, Radio, RefreshCw, Sparkles, UserRound,
 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ManageScheduleDialog } from '@/components/schedule/manage-schedule-dialog';
 import { useSchedule } from '@/hooks/use-schedule';
 import type { Lesson, Subject, WeekDay } from '@/lib/schedule/types';
 import {
@@ -127,7 +126,7 @@ function SubjectCatalog({ subjects, lessons }: { subjects: Subject[]; lessons: L
 
 export function ScheduleApp() {
   const {
-    schedule, setSchedule, selectedUser, selectUser, source, loading, error,
+    schedule, selectedUser, selectUser, source, loading, error,
     refresh, remoteConfigured,
   } = useSchedule();
   const { lessons, subjects, semester } = schedule;
@@ -206,13 +205,10 @@ export function ScheduleApp() {
           </nav>
 
           <div className="flex items-center gap-2">
-            <ManageScheduleDialog
-              key={`${schedule.user.slug}:${schedule.revision}`}
-              schedule={schedule}
-              remoteConfigured={remoteConfigured}
-              onSchedule={setSchedule}
-              onRefresh={refresh}
-            />
+            <a href="#/import" className="inline-flex h-10 items-center justify-center gap-1.5 rounded-full border border-[#dedacf] bg-white/80 px-3.5 text-xs font-semibold text-[#293638] transition hover:bg-white">
+              <FileJson2 className="size-3.5" />
+              <span className="hidden sm:inline">Імпорт</span>
+            </a>
             <Button variant="outline" onClick={goToToday} className="h-10 rounded-full border-[#dedacf] bg-white/80 px-4 text-xs font-semibold text-[#394346] shadow-none hover:bg-white">
               <Sparkles className="size-3.5 text-[#e08b5b]" />
               <span className="hidden xl:inline">До сьогодні</span>
