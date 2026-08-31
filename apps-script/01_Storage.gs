@@ -42,14 +42,43 @@ function readTable_(name) {
   if (!headers) throw schedulerError_('UNKNOWN_TABLE', 'Unknown sheet: ' + name);
   const sheet = spreadsheet.getSheetByName(name);
   if (!sheet || sheet.getLastRow() < 2) return [];
-  const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getDisplayValues();
+  const range = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length);
+  const values = range.getValues();
+  const displayValues = range.getDisplayValues();
+  const timezone = spreadsheet.getSpreadsheetTimeZone();
   return values
-    .filter(function (row) { return row.some(function (cell) { return cell !== ''; }); })
-    .map(function (row) {
+    .map(function (row, rowIndex) {
       const record = {};
-      headers.forEach(function (header, index) { record[header] = row[index]; });
+      headers.forEach(function (header, index) {
+        record[header] = normalizeSheetCell_(header, row[index], displayValues[rowIndex][index], timezone);
+      });
       return record;
+    })
+    .filter(function (record) {
+      return headers.some(function (header) { return record[header] !== ''; });
     });
+}
+
+function normalizeSheetCell_(header, value, displayValue, timezone) {
+  if (header === 'start_time' || header === 'end_time') {
+    if (value instanceof Date) return Utilities.formatDate(value, timezone, 'HH:mm');
+
+    const time = String(displayValue || value || '').trim();
+    const match = time.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+    if (match) return String(Number(match[1])).padStart(2, '0') + ':' + match[2];
+    return time;
+  }
+
+  return displayValue === undefined || displayValue === null ? '' : String(displayValue);
+}
+
+function formatTimeColumnsAsText_(sheet, headers, startRow, rowCount) {
+  if (rowCount < 1) return;
+  headers.forEach(function (header, index) {
+    if (header === 'start_time' || header === 'end_time') {
+      sheet.getRange(startRow, index + 1, rowCount, 1).setNumberFormat('@');
+    }
+  });
 }
 
 function writeTable_(name, records) {
@@ -66,6 +95,7 @@ function writeTable_(name, records) {
       return value === undefined || value === null ? '' : value;
     });
   });
+  formatTimeColumnsAsText_(sheet, headers, 2, values.length);
   sheet.getRange(2, 1, values.length, headers.length).setValues(values);
 }
 
@@ -80,7 +110,9 @@ function appendRecords_(name, records) {
       return value === undefined || value === null ? '' : value;
     });
   });
-  sheet.getRange(sheet.getLastRow() + 1, 1, values.length, headers.length).setValues(values);
+  const startRow = sheet.getLastRow() + 1;
+  formatTimeColumnsAsText_(sheet, headers, startRow, values.length);
+  sheet.getRange(startRow, 1, values.length, headers.length).setValues(values);
 }
 
 function loadDatabase_() {
