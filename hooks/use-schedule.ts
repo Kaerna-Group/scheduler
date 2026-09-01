@@ -38,8 +38,9 @@ export function useSchedule() {
   const [loading, setLoading] = useState(hasRemoteApi());
   const [error, setError] = useState('');
   const requestRef = useRef<AbortController | null>(null);
+  const activeUserRef = useRef(selectedUser);
 
-  const refresh = useCallback(async (userSlug = selectedUser) => {
+  const refresh = useCallback(async (userSlug: string) => {
     if (!hasRemoteApi()) {
       setLoading(false);
       return;
@@ -53,15 +54,16 @@ export function useSchedule() {
 
     try {
       const remote = await fetchSchedule(userSlug, schedule.semester.id, controller.signal);
+      if (activeUserRef.current !== userSlug) return;
       setSchedule(remote);
       setSource('remote');
     } catch (requestError) {
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || activeUserRef.current !== userSlug) return;
       setError(requestError instanceof Error ? requestError.message : 'Не вдалося оновити розклад.');
     } finally {
-      if (!controller.signal.aborted) setLoading(false);
+      if (!controller.signal.aborted && activeUserRef.current === userSlug) setLoading(false);
     }
-  }, [schedule.semester.id, selectedUser]);
+  }, [schedule.semester.id]);
 
   useEffect(() => {
     if (readPreferences().schedule.refreshOnOpen) void refresh(selectedUser);
@@ -78,15 +80,27 @@ export function useSchedule() {
   }, [selectedUser]);
 
   const selectUser = useCallback((userSlug: string) => {
+    if (userSlug === activeUserRef.current) return;
+    activeUserRef.current = userSlug;
+    requestRef.current?.abort();
     setSelectedUserState(userSlug);
     const cached = readCachedSchedule(userSlug, schedule.semester.id);
     if (cached) {
       setSchedule(cached);
       setSource('cache');
     } else {
-      setSchedule(getFallbackSchedule(userSlug));
+      const fallback = getFallbackSchedule(userSlug);
+      setSchedule((current) => ({
+        ...current,
+        users: fallback.users,
+        user: fallback.user,
+        subjects: [],
+        lessons: [],
+      }));
       setSource('fallback');
     }
+    setError('');
+    setLoading(hasRemoteApi());
   }, [schedule.semester.id]);
 
   return {

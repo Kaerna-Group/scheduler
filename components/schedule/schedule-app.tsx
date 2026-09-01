@@ -306,7 +306,13 @@ export function ScheduleApp() {
               <div className="text-right text-xs leading-relaxed text-muted-foreground">{dates.monday.getDate()} {monthNames[dates.monday.getMonth()]} — {dates.saturday.getDate()} {monthNames[dates.saturday.getMonth()]}</div>
             </div>
 
-            <div className="space-y-8">
+            {loading && subjects.length === 0 ? (
+              <div className="rounded-[24px] border border-border bg-card/70 px-6 py-12 text-center">
+                <RefreshCw className="mx-auto size-5 animate-spin text-accent" />
+                <div className="mt-3 text-sm font-semibold text-foreground">Завантажуємо розклад</div>
+                <div className="mt-1 text-xs text-muted-foreground">Користувач: {selectedUserName}</div>
+              </div>
+            ) : <div className="space-y-8">
               {view === 'subjects' ? (
                 <SubjectCatalog subjects={subjects} lessons={lessons} />
               ) : visibleDays.map((day) => (
@@ -328,7 +334,7 @@ export function ScheduleApp() {
                   Сьогодні вихідний — навчальних пар немає
                 </div>
               )}
-            </div>
+            </div>}
           </div>
 
           <aside className="space-y-4 lg:sticky lg:top-6 lg:self-start">
