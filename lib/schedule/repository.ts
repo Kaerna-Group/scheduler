@@ -1,41 +1,13 @@
 import { fallbackSchedule } from '@/data/fallback-schedule';
+import { createApiUrl, parseApiResponse, postApi } from '@/lib/api/client';
 import type { ScheduleImportV1, ScheduleUser, UserSchedule } from '@/lib/schedule/types';
-import type { PreferencesPatch, SchedulerPreferences } from '@/lib/theme/theme-storage';
 
-const API_URL = (import.meta.env.VITE_SCHEDULE_API_URL as string | undefined)?.trim() ?? '';
 const CACHE_PREFIX = 'scheduler_cache_v1:';
 const USERS_CACHE_KEY = 'scheduler_users_v1';
 const EDIT_TOKEN_PREFIX = 'scheduler_edit_token_v1:';
 const LAST_SYNC_PREFIX = 'scheduler_last_sync_v1:';
 const LEGACY_USER_SLUG = 'tymofii';
 const DEFAULT_USER_SLUG = 'ermolz';
-
-interface ApiSuccess<T> {
-  ok: true;
-  data: T;
-}
-
-interface ApiFailure {
-  ok: false;
-  error: { code: string; message: string; details?: unknown };
-  revision?: number;
-}
-
-type ApiResponse<T> = ApiSuccess<T> | ApiFailure;
-
-export class ScheduleApiError extends Error {
-  code: string;
-  details?: unknown;
-  revision?: number;
-
-  constructor(response: ApiFailure) {
-    super(response.error.message);
-    this.name = 'ScheduleApiError';
-    this.code = response.error.code;
-    this.details = response.error.details;
-    this.revision = response.revision;
-  }
-}
 
 function cacheKey(userSlug: string, semesterId: string) {
   return `${CACHE_PREFIX}${userSlug}:${semesterId}`;
@@ -45,18 +17,7 @@ function lastSyncKey(userSlug: string, semesterId: string) {
   return `${LAST_SYNC_PREFIX}${userSlug}:${semesterId}`;
 }
 
-function parseResponse<T>(value: unknown): T {
-  const response = value as ApiResponse<T>;
-  if (!response || typeof response !== 'object' || typeof response.ok !== 'boolean') {
-    throw new Error('Сервер повернув невідомий формат відповіді.');
-  }
-  if (!response.ok) throw new ScheduleApiError(response);
-  return response.data;
-}
-
-export function hasRemoteApi() {
-  return Boolean(API_URL);
-}
+export { hasRemoteApi } from '@/lib/api/client';
 
 function isScheduleUser(value: unknown): value is ScheduleUser {
   if (!value || typeof value !== 'object') return false;
@@ -211,28 +172,16 @@ export function forgetAllEditTokens() {
 }
 
 export async function fetchSchedule(userSlug: string, semesterId: string, signal?: AbortSignal) {
-  if (!API_URL) throw new Error('Remote API ще не налаштовано.');
-  const url = new URL(API_URL);
+  const url = createApiUrl();
   url.searchParams.set('action', 'schedule');
   url.searchParams.set('user', userSlug);
   url.searchParams.set('semester', semesterId);
   const response = await fetch(url, { signal, cache: 'no-store' });
   if (!response.ok) throw new Error(`API недоступне: HTTP ${response.status}.`);
-  const schedule = parseResponse<UserSchedule>(await response.json());
+  const schedule = parseApiResponse<UserSchedule>(await response.json());
   writeCachedSchedule(schedule);
   try { localStorage.setItem(lastSyncKey(schedule.user.slug, schedule.semester.id), new Date().toISOString()); } catch { /* metadata is optional */ }
   return schedule;
-}
-
-async function post<T>(body: Record<string, unknown>) {
-  if (!API_URL) throw new Error('Remote API ще не налаштовано.');
-  const response = await fetch(API_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) throw new Error(`API недоступне: HTTP ${response.status}.`);
-  return parseResponse<T>(await response.json());
 }
 
 export async function importPersonalSchedule(args: {
@@ -244,7 +193,7 @@ export async function importPersonalSchedule(args: {
   allowSharedUpdates: boolean;
   dryRun?: boolean;
 }) {
-  return post<{ schedule?: UserSchedule; revision: number; plan: unknown }>({
+  return postApi<{ schedule?: UserSchedule; revision: number; plan: unknown }>({
     action: args.dryRun ? 'previewImport' : 'importSchedule',
     userSlug: args.userSlug,
     editToken: args.token,
@@ -262,27 +211,12 @@ export async function updateEnrollments(args: {
   enrollments: Array<{ externalCode: string; selectedGroup?: number }>;
   baseRevision: number;
 }) {
-  return post<{ schedule: UserSchedule; revision: number }>({
+  return postApi<{ schedule: UserSchedule; revision: number }>({
     action: 'updateEnrollments',
     userSlug: args.userSlug,
     editToken: args.token,
     semesterId: args.semesterId,
     enrollments: args.enrollments,
     baseRevision: args.baseRevision,
-  });
-}
-
-export async function updatePreferences(args: {
-  userSlug: string;
-  token: string;
-  baseSettingsRevision: number;
-  patch: PreferencesPatch;
-}) {
-  return post<{ preferences: SchedulerPreferences; preferencesRevision: number }>({
-    action: 'updatePreferences',
-    userSlug: args.userSlug,
-    editToken: args.token,
-    baseSettingsRevision: args.baseSettingsRevision,
-    patch: args.patch,
   });
 }

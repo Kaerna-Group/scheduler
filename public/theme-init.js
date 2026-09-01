@@ -10,7 +10,8 @@
   const darkThemes = ['midnight-black', 'graphite-current', 'dusk-gray', 'navy-electric', 'plum-night'];
   let appearance = defaults;
   try {
-    const user = localStorage.getItem('scheduler_selected_user_v1') || 'ermolz';
+    const storedUser = localStorage.getItem('scheduler_selected_user_v1');
+    const user = storedUser === 'tymofii' ? 'ermolz' : (storedUser || 'ermolz');
     const current = JSON.parse(localStorage.getItem('scheduler_preferences_v2:' + user) || 'null');
     const legacy = JSON.parse(localStorage.getItem('scheduler_preferences_v1') || 'null');
     const stored = current && current.preferences ? current.preferences : legacy;

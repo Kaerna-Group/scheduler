@@ -16,14 +16,17 @@ const context = {
   LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
   loadDatabase_: () => database,
   authenticateEditToken_: () => database.Users[0],
-  resolveWritableUser_: () => database.Users[0],
   getRevisionFromDb_: (value) => Number(value.Meta[0].value),
   appendAuditChanges_: (value, actor, changes, revision) => value.AuditLog.push({ actor, changes, revision }),
   persistDatabase_: (value, tables) => persistedTables.push(...tables),
 };
 
-vm.runInNewContext(`${configSource}\n${preferencesSource}\nglobalThis.preferencesTestApi = { updatePreferences_, normalizePreferencesPatch_ };`, context);
-const { updatePreferences_, normalizePreferencesPatch_ } = context.preferencesTestApi;
+vm.runInNewContext(`${configSource}\n${preferencesSource}\nglobalThis.preferencesTestApi = { updatePreferences_, normalizePreferencesPatch_, getUserPreferences_, createDefaultPreferenceRow_ };`, context);
+const { updatePreferences_, normalizePreferencesPatch_, getUserPreferences_, createDefaultPreferenceRow_ } = context.preferencesTestApi;
+
+assert.equal(getUserPreferences_(database, 'USR-1').preferencesExists, false);
+database.UserPreferences.push(createDefaultPreferenceRow_('USR-1'));
+assert.equal(getUserPreferences_(database, 'USR-1').preferencesExists, false, 'revision 0 is an uninitialized migration row');
 
 const first = updatePreferences_({
   userSlug: 'ermolz', editToken: 'secret', baseSettingsRevision: 0,
@@ -32,6 +35,7 @@ const first = updatePreferences_({
 assert.equal(first.preferences.appearance.themeId, 'graphite-current');
 assert.equal(first.preferences.schedule.density, 'comfortable', 'an appearance patch must preserve schedule settings');
 assert.equal(first.preferencesRevision, 1);
+assert.equal(getUserPreferences_(database, 'USR-1').preferencesExists, true);
 assert.equal(database.Meta[0].value, '17', 'preference updates must not increment schedule revision');
 assert.deepEqual(persistedTables, ['UserPreferences', 'AuditLog']);
 assert.equal(database.AuditLog[0].revision, 17);
@@ -42,5 +46,9 @@ assert.throws(
 );
 assert.throws(() => normalizePreferencesPatch_({ schedule: { density: 'tiny' } }), (error) => error.code === 'VALIDATION_ERROR');
 assert.throws(() => normalizePreferencesPatch_({ secret: true }), (error) => error.code === 'VALIDATION_ERROR');
+assert.throws(
+  () => updatePreferences_({ userSlug: 'another-user', editToken: 'secret', baseSettingsRevision: 1, patch: { schedule: { density: 'compact' } } }),
+  (error) => error.code === 'FORBIDDEN',
+);
 
 console.log('Apps Script preferences tests passed');

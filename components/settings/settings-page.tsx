@@ -31,6 +31,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { useSchedule } from '@/hooks/use-schedule';
+import { usePreferences } from '@/hooks/use-preferences';
 import { useTheme } from '@/hooks/use-theme';
 import {
   clearScheduleCache,
@@ -38,7 +39,8 @@ import {
   getStoredEditToken,
 } from '@/lib/schedule/repository';
 import { darkThemeIds, lightThemeIds, themeById, themes, type ThemeMode } from '@/lib/theme/theme-registry';
-import { clearAllPreferenceCaches, type SchedulerPreferences } from '@/lib/theme/theme-storage';
+import { clearAllPreferenceCaches } from '@/lib/preferences/local-storage';
+import type { SchedulerPreferences } from '@/lib/preferences/types';
 
 const sections = [
   ['appearance', 'Оформлення', Brush],
@@ -69,7 +71,8 @@ function SettingsSection({ id, title, icon: Icon, children }: { id: string; titl
 }
 
 export function SettingsPage() {
-  const { preferences, setPreferences, resetPreferences, themeId, preferencesRevision, syncStatus, syncError } = useTheme();
+  const { preferences, setPreferences, resetPreferences, preferencesRevision, syncStatus, syncError } = usePreferences();
+  const { themeId } = useTheme(preferences.appearance);
   const { schedule, selectedUser, selectUser, source, loading, error, refresh, remoteConfigured, lastSync } = useSchedule();
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
   const [notice, setNotice] = useState('');

@@ -1,8 +1,31 @@
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { themes } from '@/lib/theme/theme-registry';
-import { applyPreferencesPatch, defaultPreferences, diffPreferences, mergePreferencesPatch, validatePreferences } from '@/lib/theme/theme-storage';
+import { defaultPreferences } from '@/lib/preferences/defaults';
+import {
+  acceptRemotePreferences,
+  LEGACY_PREFERENCES_KEY,
+  getActivePreferencesUser,
+  preferencesStorageKey,
+  readPreferencesRecord,
+} from '@/lib/preferences/local-storage';
+import { applyPreferencesPatch, diffPreferences, mergePreferencesPatch, validatePreferences } from '@/lib/preferences/validation';
+
+class MemoryStorage {
+  private values = new Map<string, string>();
+  get length() { return this.values.size; }
+  clear() { this.values.clear(); }
+  getItem(key: string) { return this.values.get(key) ?? null; }
+  key(index: number) { return [...this.values.keys()][index] ?? null; }
+  removeItem(key: string) { this.values.delete(key); }
+  setItem(key: string, value: string) { this.values.set(key, String(value)); }
+}
+
+beforeEach(() => {
+  vi.stubGlobal('localStorage', new MemoryStorage());
+  vi.stubGlobal('window', { dispatchEvent: vi.fn() });
+});
 
 function relativeLuminance(hex: string) {
   const channels = hex.slice(1).match(/.{2}/g)!.map((value) => Number.parseInt(value, 16) / 255)
@@ -55,6 +78,45 @@ describe('theme preferences', () => {
     expect(applyPreferencesPatch(defaultPreferences, merged).schedule.showEmptyDays).toBe(true);
   });
 
+  it('lets existing server preferences win during the legacy v1 migration', () => {
+    const legacy = structuredClone(defaultPreferences);
+    legacy.appearance.mode = 'dark';
+    legacy.appearance.themeId = 'navy-electric';
+    localStorage.setItem(LEGACY_PREFERENCES_KEY, JSON.stringify(legacy));
+
+    const staged = readPreferencesRecord('ermolz');
+    expect(staged.migration).toBe('legacy-v1');
+    expect(localStorage.getItem(LEGACY_PREFERENCES_KEY)).not.toBeNull();
+
+    const server = structuredClone(defaultPreferences);
+    server.appearance.themeId = 'stone-light';
+    const accepted = acceptRemotePreferences('ermolz', server, 4, true);
+    expect(accepted.preferences.appearance.themeId).toBe('stone-light');
+    expect(accepted.pendingPatch).toBeUndefined();
+    expect(accepted.migration).toBeUndefined();
+    expect(localStorage.getItem(LEGACY_PREFERENCES_KEY)).toBeNull();
+  });
+
+  it('initializes missing server preferences from legacy v1 without mixing users or semesters', () => {
+    const legacy = structuredClone(defaultPreferences);
+    legacy.schedule.density = 'compact';
+    localStorage.setItem(LEGACY_PREFERENCES_KEY, JSON.stringify(legacy));
+
+    readPreferencesRecord('ermolz');
+    const accepted = acceptRemotePreferences('ermolz', defaultPreferences, 0, false);
+    expect(accepted.preferences.schedule.density).toBe('compact');
+    expect(accepted.pendingPatch?.schedule?.density).toBe('compact');
+    expect(preferencesStorageKey('ermolz')).toBe('scheduler_preferences_v2:ermolz');
+    expect(preferencesStorageKey('zahar')).toBe('scheduler_preferences_v2:zahar');
+    expect(preferencesStorageKey('ermolz')).not.toContain('semester');
+  });
+
+  it('moves the legacy tymofii device selection to ermolz before reading preferences', () => {
+    localStorage.setItem('scheduler_selected_user_v1', 'tymofii');
+    expect(getActivePreferencesUser()).toBe('ermolz');
+    expect(localStorage.getItem('scheduler_selected_user_v1')).toBe('ermolz');
+  });
+
   it('provides readable preview text in every theme', () => {
     themes.forEach((theme) => {
       expect(contrast(theme.preview.foreground, theme.preview.background), theme.name).toBeGreaterThanOrEqual(4.5);
@@ -87,5 +149,11 @@ describe('theme preferences', () => {
     const source = readFileSync(new URL('../components/settings/settings-page.tsx', import.meta.url), 'utf8');
     expect(source).toContain('scrollIntoView');
     expect(source).not.toContain('href={`#${id}`}');
+  });
+
+  it('keeps theme application independent from persistence and synchronization', () => {
+    const source = readFileSync(new URL('../hooks/use-theme.ts', import.meta.url), 'utf8');
+    expect(source).toContain('useTheme(appearance: AppearancePreferences)');
+    expect(source).not.toMatch(/local-storage|repository|editToken|updatePreferences|SchedulerPreferences/);
   });
 });

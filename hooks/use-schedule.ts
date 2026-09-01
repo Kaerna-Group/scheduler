@@ -9,7 +9,7 @@ import {
   readCachedUsers,
   readLastSync,
 } from '@/lib/schedule/repository';
-import { acceptRemotePreferences, activatePreferencesUser, readPreferences } from '@/lib/theme/theme-storage';
+import { acceptRemotePreferences, activatePreferencesUser, readPreferences } from '@/lib/preferences/local-storage';
 import type { ScheduleSource, UserSchedule } from '@/lib/schedule/types';
 
 const USER_KEY = 'scheduler_selected_user_v1';
@@ -56,7 +56,7 @@ export function useSchedule() {
       const remote = await fetchSchedule(userSlug, schedule.semester.id, controller.signal);
       if (activeUserRef.current !== userSlug) return;
       if (remote.preferences && Number.isInteger(remote.preferencesRevision)) {
-        acceptRemotePreferences(userSlug, remote.preferences, remote.preferencesRevision ?? 0);
+        acceptRemotePreferences(userSlug, remote.preferences, remote.preferencesRevision ?? 0, remote.preferencesExists ?? true);
       }
       setSchedule(remote);
       setSource('remote');

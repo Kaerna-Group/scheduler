@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { useSchedule } from '@/hooks/use-schedule';
+import { usePreferences } from '@/hooks/use-preferences';
 import { useTheme } from '@/hooks/use-theme';
 import type { Lesson, Subject, WeekDay } from '@/lib/schedule/types';
 import {
@@ -129,7 +130,8 @@ function SubjectCatalog({ subjects, lessons }: { subjects: Subject[]; lessons: L
 }
 
 export function ScheduleApp() {
-  const { preferences } = useTheme();
+  const { preferences } = usePreferences();
+  useTheme(preferences.appearance);
   const {
     schedule, selectedUser, selectUser, source, loading, error,
     refresh, remoteConfigured,

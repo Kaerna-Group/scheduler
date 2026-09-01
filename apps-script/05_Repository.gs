@@ -102,6 +102,7 @@ function buildUserSchedule_(userSlug, semesterId, providedDatabase) {
     revision: getRevisionFromDb_(database),
     preferences: userPreferences.preferences,
     preferencesRevision: userPreferences.preferencesRevision,
+    preferencesExists: userPreferences.preferencesExists,
   };
 }
 

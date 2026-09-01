@@ -66,8 +66,14 @@ function preferenceRowToPublic_(row) {
 }
 
 function getUserPreferences_(database, userId) {
-  const row = database.UserPreferences.find(function (item) { return item.user_id === userId; }) || createDefaultPreferenceRow_(userId);
-  return { preferences: preferenceRowToPublic_(row), preferencesRevision: Number(row.settings_revision) || 0 };
+  const storedRow = database.UserPreferences.find(function (item) { return item.user_id === userId; });
+  const row = storedRow || createDefaultPreferenceRow_(userId);
+  return {
+    preferences: preferenceRowToPublic_(row),
+    preferencesRevision: Number(row.settings_revision) || 0,
+    // Revision 0 is an uninitialized default row. Legacy local preferences may seed it once.
+    preferencesExists: Boolean(storedRow) && (Number(storedRow.settings_revision) || 0) > 0,
+  };
 }
 
 function assertPreferenceValue_(allowed, value, field) {
@@ -149,13 +155,20 @@ function applyPreferencesPatchToRow_(row, patch) {
   });
 }
 
+function resolvePreferenceOwner_(actor, requestedSlug) {
+  const slug = String(requestedSlug || '').trim();
+  if (!slug) throw schedulerError_('VALIDATION_ERROR', 'userSlug is required for preference updates.');
+  if (slug !== actor.slug) throw schedulerError_('FORBIDDEN', 'Preferences can be changed only with their owner edit token.');
+  return actor;
+}
+
 function updatePreferences_(body) {
   const lock = LockService.getScriptLock();
   lock.waitLock(SCHEDULER_CONFIG.lockTimeoutMs);
   try {
     const database = loadDatabase_();
     const actor = authenticateEditToken_(database, body.editToken);
-    const target = resolveWritableUser_(database, actor, body.userSlug);
+    const target = resolvePreferenceOwner_(actor, body.userSlug);
     let row = database.UserPreferences.find(function (item) { return item.user_id === target.user_id; });
     if (!row) {
       row = createDefaultPreferenceRow_(target.user_id);

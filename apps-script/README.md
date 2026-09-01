@@ -2,7 +2,7 @@
 
 ## Що вже реалізовано
 
-- реляційна схема з 11 листів;
+- реляційна схема з 12 листів, включно з `UserPreferences`;
 - `setupScheduler()` для створення схеми та початкових даних;
 - `GetUserSchedule` через `GET ?action=schedule&user=...&semester=...`;
 - один DTO для frontend, без join-ів у React;
@@ -12,6 +12,7 @@
 - `merge` і `replace my enrollments`;
 - `COURSE_DATA_CONFLICT` для розбіжностей у спільних Lessons;
 - optimistic concurrency через `baseRevision` / `STALE_DATA`;
+- окремий `settings_revision` та `updatePreferences`, який приймає лише edit token власника;
 - `LockService` на час запису;
 - пакетні записи таблиць;
 - `AuditLog`;
@@ -83,6 +84,20 @@ GET /exec?action=schedule&user=ermolz&semester=SEM-2026-FALL
 ```
 
 POST надсилається як `text/plain;charset=utf-8`, щоб Apps Script web app приймав запит без CORS preflight. Вміст залишається JSON.
+
+### Preferences patch
+
+```json
+{
+  "action": "updatePreferences",
+  "userSlug": "ermolz",
+  "editToken": "...",
+  "baseSettingsRevision": 4,
+  "patch": { "schedule": { "density": "compact" } }
+}
+```
+
+`settings_revision` не змінює `data_revision`. Навіть admin не може змінити preferences іншого користувача без edit token цього користувача.
 
 ## Початкові дані
 

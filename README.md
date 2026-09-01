@@ -6,12 +6,15 @@
 
 ```text
 React UI
-  └─ useSchedule
-      └─ Schedule Repository
-          ├─ localStorage cache / fallback fixtures
+  ├─ useSchedule → Schedule Repository
+  └─ usePreferences
+      ├─ useTheme (лише застосування appearance)
+      └─ Preferences Repository
+          ├─ per-user localStorage cache
           └─ Google Apps Script Web App
               └─ Google Spreadsheet
                   ├─ Users
+                  ├─ UserPreferences
                   ├─ Semesters
                   ├─ Subjects
                   ├─ Offerings
@@ -24,7 +27,7 @@ React UI
                   └─ AuditLog
 ```
 
-Frontend отримує один `UserSchedule` DTO: користувачі, поточний користувач, семестр, дисципліни, заняття та revision. Реляційні зв’язки збираються тільки backend-ом.
+Frontend отримує `UserSchedule` DTO разом із налаштуваннями власника. Налаштування належать `user_id`, кешуються ключем `scheduler_preferences_v2:<slug>` і мають власний `settings_revision`, незалежний від revision розкладу.
 
 ## Локальний запуск
 
@@ -43,7 +46,7 @@ npm run build
 npm run apps-script:bundle
 ```
 
-Тести охоплюють конфлікти, непарні тижні, зміну дня за діапазонами тижнів, дисципліну без Lessons, дублікати course code та некоректні тижні.
+Тести охоплюють конфлікти, імпорт, міграцію preferences, правило server-wins, незалежні revision та token-захист персональних налаштувань.
 
 ## Import / Export
 
