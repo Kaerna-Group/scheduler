@@ -1,0 +1,30 @@
+html[data-mode='light'],
+html:not([data-mode]) {
+  --success: #47785a;
+  --success-soft: #edf5ef;
+  --success-foreground: #31563f;
+  --warning: #b36b36;
+  --warning-soft: #fff5ed;
+  --warning-foreground: #75452c;
+  --destructive: #b55549;
+  --destructive-soft: #fff0ed;
+  --destructive-foreground: #813f37;
+  --info: #3f719f;
+  --info-soft: #edf5fc;
+  --info-foreground: #315a80;
+}
+
+html[data-mode='dark'] {
+  --success: #82c596;
+  --success-soft: #173523;
+  --success-foreground: #b6e6c3;
+  --warning: #efaa68;
+  --warning-soft: #3b291b;
+  --warning-foreground: #ffd1a4;
+  --destructive: #f08b80;
+  --destructive-soft: #41211f;
+  --destructive-foreground: #ffc0b9;
+  --info: #76b7ee;
+  --info-soft: #172f46;
+  --info-foreground: #b9ddfb;
+}

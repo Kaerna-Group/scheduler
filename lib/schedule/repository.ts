@@ -5,6 +5,7 @@ const API_URL = (import.meta.env.VITE_SCHEDULE_API_URL as string | undefined)?.t
 const CACHE_PREFIX = 'scheduler_cache_v1:';
 const USERS_CACHE_KEY = 'scheduler_users_v1';
 const EDIT_TOKEN_PREFIX = 'scheduler_edit_token_v1:';
+const LAST_SYNC_PREFIX = 'scheduler_last_sync_v1:';
 const LEGACY_USER_SLUG = 'tymofii';
 const DEFAULT_USER_SLUG = 'ermolz';
 
@@ -37,6 +38,10 @@ export class ScheduleApiError extends Error {
 
 function cacheKey(userSlug: string, semesterId: string) {
   return `${CACHE_PREFIX}${userSlug}:${semesterId}`;
+}
+
+function lastSyncKey(userSlug: string, semesterId: string) {
+  return `${LAST_SYNC_PREFIX}${userSlug}:${semesterId}`;
 }
 
 function parseResponse<T>(value: unknown): T {
@@ -174,6 +179,36 @@ export function storeEditToken(userSlug: string, token: string) {
   }
 }
 
+export function readLastSync(userSlug: string, semesterId: string) {
+  try { return localStorage.getItem(lastSyncKey(userSlug, semesterId)) ?? ''; } catch { return ''; }
+}
+
+export function clearScheduleCache() {
+  try {
+    const keys: string[] = [];
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (key?.startsWith(CACHE_PREFIX) || key?.startsWith(LAST_SYNC_PREFIX) || key === USERS_CACHE_KEY) keys.push(key);
+    }
+    keys.forEach((key) => localStorage.removeItem(key));
+  } catch {
+    // Clearing cache is best effort when storage is restricted.
+  }
+}
+
+export function forgetAllEditTokens() {
+  try {
+    const keys: string[] = [];
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (key?.startsWith(EDIT_TOKEN_PREFIX)) keys.push(key);
+    }
+    keys.forEach((key) => localStorage.removeItem(key));
+  } catch {
+    // Tokens may already be inaccessible.
+  }
+}
+
 export async function fetchSchedule(userSlug: string, semesterId: string, signal?: AbortSignal) {
   if (!API_URL) throw new Error('Remote API ще не налаштовано.');
   const url = new URL(API_URL);
@@ -184,6 +219,7 @@ export async function fetchSchedule(userSlug: string, semesterId: string, signal
   if (!response.ok) throw new Error(`API недоступне: HTTP ${response.status}.`);
   const schedule = parseResponse<UserSchedule>(await response.json());
   writeCachedSchedule(schedule);
+  try { localStorage.setItem(lastSyncKey(schedule.user.slug, schedule.semester.id), new Date().toISOString()); } catch { /* metadata is optional */ }
   return schedule;
 }
 

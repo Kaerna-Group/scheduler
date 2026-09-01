@@ -68,6 +68,13 @@ describe('import contract', () => {
     expect(validation.errors.some((error) => error.includes('діапазоном'))).toBe(true);
   });
 
+  it('validates subject colors and assigns the shared palette when omitted', () => {
+    const invalid = validateScheduleImport({ schemaVersion: 1, semesterId: 'SEM-2026-FALL', subjects: [{ externalCode: 'A', name: 'A', color: 'red', lessons: [] }] });
+    expect(invalid.errors.some((error) => error.includes('#RRGGBB'))).toBe(true);
+    const withoutColor = validateScheduleImport({ schemaVersion: 1, semesterId: 'SEM-2026-FALL', subjects: [{ externalCode: 'A', name: 'A', lessons: [] }] });
+    expect(withoutColor.value?.subjects[0].color).toMatch(/^#[0-9a-f]{6}$/);
+  });
+
   it('keeps the published example and LLM prompt aligned with schema v1', () => {
     expect(validateScheduleImport(scheduleImportExample, 14).errors).toEqual([]);
     const prompt = buildLlmImportPrompt('SEM-2026-FALL', 14);

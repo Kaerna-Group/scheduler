@@ -7,6 +7,7 @@ import type {
   UserSchedule,
   WeekDay,
 } from '@/lib/schedule/types';
+import { isSubjectColor, subjectColorAt } from '@/lib/schedule/subject-palette';
 
 const days = new Set<WeekDay>(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']);
 const types = new Set<LessonType>(['lecture', 'group']);
@@ -50,6 +51,9 @@ export function validateScheduleImport(input: unknown, weeksCount = 14): ImportV
       const selectedGroup = rawSubject.selectedGroup === undefined ? undefined : Number(rawSubject.selectedGroup);
       if (selectedGroup !== undefined && (!Number.isInteger(selectedGroup) || selectedGroup < 1)) {
         errors.push(`${prefix}.selectedGroup має бути додатним цілим числом.`);
+      }
+      if (rawSubject.color !== undefined && !isSubjectColor(rawSubject.color)) {
+        errors.push(`${prefix}.color має бути у форматі #RRGGBB.`);
       }
 
       const normalizedLessons: ImportLesson[] = [];
@@ -113,7 +117,7 @@ export function validateScheduleImport(input: unknown, weeksCount = 14): ImportV
         externalCode,
         name,
         ...(typeof rawSubject.shortName === 'string' && rawSubject.shortName.trim() ? { shortName: rawSubject.shortName.trim() } : {}),
-        ...(typeof rawSubject.color === 'string' && rawSubject.color.trim() ? { color: rawSubject.color.trim() } : {}),
+        color: isSubjectColor(rawSubject.color) ? rawSubject.color.trim().toLowerCase() : subjectColorAt(subjectIndex),
         ...(selectedGroup === undefined ? {} : { selectedGroup }),
         lessons: normalizedLessons,
       });

@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { AccessGate } from '@/components/access/access-gate';
 import { ImportGuidePage } from '@/components/schedule/import-guide-page';
 import { ScheduleApp } from '@/components/schedule/schedule-app';
+import { SettingsPage } from '@/components/settings/settings-page';
 import '@/app/globals.css';
 
 function AppRouter() {
@@ -15,7 +16,9 @@ function AppRouter() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  return hash === '#/import' ? <ImportGuidePage /> : <ScheduleApp />;
+  if (hash === '#/import') return <ImportGuidePage />;
+  if (hash === '#/settings') return <SettingsPage />;
+  return <ScheduleApp />;
 }
 
 createRoot(document.getElementById('root')!).render(

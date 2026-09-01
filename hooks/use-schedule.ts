@@ -7,7 +7,9 @@ import {
   hasRemoteApi,
   readCachedSchedule,
   readCachedUsers,
+  readLastSync,
 } from '@/lib/schedule/repository';
+import { readPreferences } from '@/lib/theme/theme-storage';
 import type { ScheduleSource, UserSchedule } from '@/lib/schedule/types';
 
 const USER_KEY = 'scheduler_selected_user_v1';
@@ -62,7 +64,8 @@ export function useSchedule() {
   }, [schedule.semester.id, selectedUser]);
 
   useEffect(() => {
-    void refresh(selectedUser);
+    if (readPreferences().schedule.refreshOnOpen) void refresh(selectedUser);
+    else setLoading(false);
     return () => requestRef.current?.abort();
   }, [refresh, selectedUser]);
 
@@ -96,5 +99,6 @@ export function useSchedule() {
     error,
     refresh: () => refresh(selectedUser),
     remoteConfigured: hasRemoteApi(),
+    lastSync: readLastSync(selectedUser, schedule.semester.id),
   };
 }

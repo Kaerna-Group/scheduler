@@ -1,0 +1,33 @@
+:root {
+  --background: var(--theme-background);
+  --foreground: var(--theme-foreground);
+  --card: var(--theme-surface);
+  --card-foreground: var(--theme-foreground);
+  --popover: var(--theme-surface-raised);
+  --popover-foreground: var(--theme-foreground);
+  --primary: var(--theme-primary);
+  --primary-foreground: var(--theme-on-primary);
+  --secondary: var(--theme-surface-soft);
+  --secondary-foreground: var(--theme-foreground);
+  --muted: var(--theme-surface-soft);
+  --muted-foreground: var(--theme-muted-foreground);
+  --accent: var(--theme-accent);
+  --accent-foreground: var(--theme-on-accent);
+  --border: var(--theme-border);
+  --input: var(--theme-input);
+  --ring: var(--theme-ring);
+  --chart-1: var(--theme-accent);
+  --chart-2: var(--info);
+  --chart-3: var(--success);
+  --chart-4: var(--warning);
+  --chart-5: var(--destructive);
+  --sidebar: var(--theme-surface);
+  --sidebar-foreground: var(--theme-foreground);
+  --sidebar-primary: var(--theme-primary);
+  --sidebar-primary-foreground: var(--theme-on-primary);
+  --sidebar-accent: var(--theme-surface-soft);
+  --sidebar-accent-foreground: var(--theme-foreground);
+  --sidebar-border: var(--theme-border);
+  --sidebar-ring: var(--theme-ring);
+  --radius: 0.85rem;
+}
