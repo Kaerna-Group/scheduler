@@ -57,6 +57,8 @@ export interface UserSchedule {
   subjects: Subject[];
   lessons: Lesson[];
   revision: number;
+  preferences?: import('@/lib/theme/theme-storage').SchedulerPreferences;
+  preferencesRevision?: number;
 }
 
 export interface ImportLesson {

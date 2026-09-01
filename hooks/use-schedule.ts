@@ -9,7 +9,7 @@ import {
   readCachedUsers,
   readLastSync,
 } from '@/lib/schedule/repository';
-import { readPreferences } from '@/lib/theme/theme-storage';
+import { acceptRemotePreferences, activatePreferencesUser, readPreferences } from '@/lib/theme/theme-storage';
 import type { ScheduleSource, UserSchedule } from '@/lib/schedule/types';
 
 const USER_KEY = 'scheduler_selected_user_v1';
@@ -55,6 +55,9 @@ export function useSchedule() {
     try {
       const remote = await fetchSchedule(userSlug, schedule.semester.id, controller.signal);
       if (activeUserRef.current !== userSlug) return;
+      if (remote.preferences && Number.isInteger(remote.preferencesRevision)) {
+        acceptRemotePreferences(userSlug, remote.preferences, remote.preferencesRevision ?? 0);
+      }
       setSchedule(remote);
       setSource('remote');
     } catch (requestError) {
@@ -66,7 +69,7 @@ export function useSchedule() {
   }, [schedule.semester.id]);
 
   useEffect(() => {
-    if (readPreferences().schedule.refreshOnOpen) void refresh(selectedUser);
+    if (readPreferences(selectedUser).schedule.refreshOnOpen) void refresh(selectedUser);
     else setLoading(false);
     return () => requestRef.current?.abort();
   }, [refresh, selectedUser]);
@@ -82,6 +85,7 @@ export function useSchedule() {
   const selectUser = useCallback((userSlug: string) => {
     if (userSlug === activeUserRef.current) return;
     activeUserRef.current = userSlug;
+    activatePreferencesUser(userSlug);
     requestRef.current?.abort();
     setSelectedUserState(userSlug);
     const cached = readCachedSchedule(userSlug, schedule.semester.id);

@@ -11,6 +11,7 @@ function assertUnique_(rows, field, tableName) {
 function assertDatabaseIntegrity_(database) {
   assertUnique_(database.Users, 'user_id', 'Users');
   assertUnique_(database.Users, 'slug', 'Users');
+  assertUnique_(database.UserPreferences, 'user_id', 'UserPreferences');
   assertUnique_(database.Semesters, 'semester_id', 'Semesters');
   assertUnique_(database.Subjects, 'subject_id', 'Subjects');
   assertUnique_(database.Offerings, 'offering_id', 'Offerings');
@@ -27,6 +28,11 @@ function assertDatabaseIntegrity_(database) {
 
   database.Users.forEach(function (row) {
     if (ALLOWED_ROLES.indexOf(row.role) === -1) throw schedulerError_('INTEGRITY_ERROR', 'Invalid role for ' + row.slug);
+  });
+
+  database.UserPreferences.forEach(function (row) {
+    if (!userIds.has(row.user_id)) throw schedulerError_('INTEGRITY_ERROR', 'UserPreferences has unknown user: ' + row.user_id);
+    validatePreferenceRow_(row);
   });
 
   const offeringKeys = {};

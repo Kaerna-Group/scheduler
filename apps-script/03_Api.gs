@@ -27,6 +27,7 @@ function doPost(event) {
     if (body.action === 'previewImport') return importPersonalSchedule_(body, true);
     if (body.action === 'importSchedule') return importPersonalSchedule_(body, false);
     if (body.action === 'updateEnrollments') return updateEnrollments_(body);
+    if (body.action === 'updatePreferences') return updatePreferences_(body);
     throw schedulerError_('UNKNOWN_ACTION', 'Unknown POST action: ' + body.action);
   });
 }

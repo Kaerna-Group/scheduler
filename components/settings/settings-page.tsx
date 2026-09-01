@@ -38,7 +38,7 @@ import {
   getStoredEditToken,
 } from '@/lib/schedule/repository';
 import { darkThemeIds, lightThemeIds, themeById, themes, type ThemeMode } from '@/lib/theme/theme-registry';
-import { PREFERENCES_KEY, type SchedulerPreferences } from '@/lib/theme/theme-storage';
+import { clearAllPreferenceCaches, type SchedulerPreferences } from '@/lib/theme/theme-storage';
 
 const sections = [
   ['appearance', 'Оформлення', Brush],
@@ -69,12 +69,19 @@ function SettingsSection({ id, title, icon: Icon, children }: { id: string; titl
 }
 
 export function SettingsPage() {
-  const { preferences, setPreferences, resetPreferences, themeId } = useTheme();
+  const { preferences, setPreferences, resetPreferences, themeId, preferencesRevision, syncStatus, syncError } = useTheme();
   const { schedule, selectedUser, selectUser, source, loading, error, refresh, remoteConfigured, lastSync } = useSchedule();
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
   const [notice, setNotice] = useState('');
   const selectedUserName = schedule.users.find((user) => user.slug === selectedUser)?.displayName ?? schedule.user.displayName;
   const hasToken = Boolean(getStoredEditToken(selectedUser));
+  const preferencesStatus = syncStatus === 'saving'
+    ? 'Зберігаю…'
+    : syncStatus === 'saved'
+      ? 'Синхронізовано'
+      : syncStatus === 'error'
+        ? 'Помилка синхронізації'
+        : hasToken ? 'Збережено локально' : 'Локально · потрібен edit token';
 
   const updateAppearance = (patch: Partial<SchedulerPreferences['appearance']>) => setPreferences((current) => ({ ...current, appearance: { ...current.appearance, ...patch } }));
   const updateSchedule = (patch: Partial<SchedulerPreferences['schedule']>) => setPreferences((current) => ({ ...current, schedule: { ...current.schedule, ...patch } }));
@@ -120,8 +127,9 @@ export function SettingsPage() {
     } else if (confirmAction === 'device') {
       clearScheduleCache();
       forgetAllEditTokens();
+      clearAllPreferenceCaches();
       try {
-        ['schedule_access_v1', PREFERENCES_KEY, 'scheduler_selected_user_v1', 'scheduler_selected_week_v1', 'scheduler_subject_filter_v1'].forEach((key) => localStorage.removeItem(key));
+        ['schedule_access_v1', 'scheduler_selected_user_v1', 'scheduler_selected_week_v1', 'scheduler_subject_filter_v1'].forEach((key) => localStorage.removeItem(key));
       } catch { /* storage may be unavailable */ }
       window.location.hash = '#/';
       window.location.reload();
@@ -148,7 +156,7 @@ export function SettingsPage() {
       </header>
 
       <div className="relative mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="mb-8"><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-accent">Локально на пристрої</p><h1 className="mt-2 text-4xl font-semibold tracking-[-0.055em] sm:text-5xl">Налаштування</h1><p className="mt-3 text-sm text-muted-foreground">Зміни зберігаються на цьому пристрої. Синхронізація розкладу працює окремо.</p></div>
+        <div className="mb-8"><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-accent">Для {selectedUserName}</p><h1 className="mt-2 text-4xl font-semibold tracking-[-0.055em] sm:text-5xl">Налаштування</h1><p className="mt-3 text-sm text-muted-foreground">Зміни застосовуються одразу, зберігаються на пристрої та синхронізуються окремо для кожного користувача.</p></div>
 
         <nav className="sticky top-3 z-30 mb-5 flex gap-2 overflow-x-auto rounded-[18px] border border-border bg-background/90 p-2 backdrop-blur-xl lg:hidden" aria-label="Розділи налаштувань">
           {sections.map(([id, label]) => <button key={id} type="button" onClick={() => scrollToSection(id)} className="shrink-0 rounded-xl px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground">{label}</button>)}
@@ -188,6 +196,8 @@ export function SettingsPage() {
               <SettingRow title="Розклад за замовчуванням"><Select value={selectedUser} onValueChange={(value) => value && selectUser(value)}><SelectTrigger className="h-10 min-w-52 bg-background"><SelectValue>{selectedUserName}</SelectValue></SelectTrigger><SelectContent>{schedule.users.map((user) => <SelectItem key={user.id} value={user.slug}>{user.displayName}</SelectItem>)}</SelectContent></Select></SettingRow>
               <SettingRow title="Джерело даних"><span className="rounded-full bg-secondary px-3 py-2 text-xs font-semibold">{sourceLabel}</span></SettingRow>
               <SettingRow title="Остання синхронізація" description={`Revision ${schedule.revision}`}><span className="text-xs font-medium text-muted-foreground">{formattedSync}</span></SettingRow>
+              <SettingRow title="Синхронізація налаштувань" description={`Settings revision ${preferencesRevision}`}><span className={`rounded-full px-3 py-2 text-xs font-semibold ${syncStatus === 'error' ? 'bg-destructive-soft text-destructive-foreground' : syncStatus === 'saved' ? 'bg-success-soft text-success-foreground' : 'bg-secondary text-muted-foreground'}`}>{preferencesStatus}</span></SettingRow>
+              {syncError && <div className="rounded-[14px] bg-destructive-soft p-3 text-xs text-destructive-foreground">{syncError} Зміни залишилися в локальному кеші й будуть повторені після наступної зміни.</div>}
               <SettingRow title="Оновлювати при відкритті"><Switch checked={preferences.schedule.refreshOnOpen} onCheckedChange={(checked) => updateSchedule({ refreshOnOpen: checked })} /></SettingRow>
               <div className="pt-4"><Button onClick={() => void refresh()} disabled={!remoteConfigured || loading} className="h-10 rounded-full px-4"><RefreshCw className={loading ? 'animate-spin' : ''} />{loading ? 'Оновлюю…' : 'Оновити зараз'}</Button>{!remoteConfigured && <p className="mt-2 text-xs text-muted-foreground">Remote API не налаштовано. Скористайся <a className="underline" href="#/import">інструкцією імпорту</a>.</p>}{error && <p className="mt-2 text-xs text-destructive-foreground">{error}</p>}</div>
             </SettingsSection>
@@ -204,7 +214,7 @@ export function SettingsPage() {
               <SettingRow title="Версія"><span className="font-mono text-xs text-muted-foreground">frontend 0.1.0 · preferences schema 1</span></SettingRow>
               <SettingRow title="Семестр"><span className="text-xs font-medium text-muted-foreground">{schedule.semester.title} · revision {schedule.revision}</span></SettingRow>
               <SettingRow title="Посилання"><div className="flex flex-wrap justify-end gap-2"><a className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-2 text-xs font-semibold hover:bg-muted" href="https://github.com/Kaerna-Group/scheduler" target="_blank" rel="noreferrer">GitHub <ExternalLink className="size-3.5" /></a><a className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-2 text-xs font-semibold hover:bg-muted" href="#/import">Інструкція імпорту</a></div></SettingRow>
-              <div className="rounded-[16px] bg-info-soft p-4 text-xs leading-6 text-info-foreground">Тема, вигляд і доступ зберігаються лише на цьому пристрої. Спільний розклад зберігається в Google Sheets і завантажується через Apps Script.</div>
+              <div className="rounded-[16px] bg-info-soft p-4 text-xs leading-6 text-info-foreground">Тема й параметри вигляду синхронізуються через Google Sheets та кешуються на цьому пристрої для швидкого запуску. PIN-доступ і edit token залишаються лише локально.</div>
             </SettingsSection>
 
             <div className="flex flex-col items-start justify-between gap-4 rounded-[22px] border border-border bg-card p-5 sm:flex-row sm:items-center"><div><div className="text-sm font-semibold">Стандартні налаштування</div><div className="mt-1 text-xs text-muted-foreground">Не видаляє розклад, кеш, доступ або edit token.</div></div><Button variant="outline" onClick={() => setConfirmAction('reset')}><RotateCcw />Скинути налаштування</Button></div>

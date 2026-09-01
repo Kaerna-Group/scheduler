@@ -9,6 +9,7 @@ const SCHEDULER_CONFIG = Object.freeze({
 
 const SCHEDULER_SHEETS = Object.freeze({
   Users: ['user_id', 'slug', 'display_name', 'role', 'edit_token_hash', 'active'],
+  UserPreferences: ['user_id', 'preferences_version', 'appearance_mode', 'theme_id', 'system_light_theme_id', 'system_dark_theme_id', 'reduced_motion', 'default_view', 'initial_week', 'show_empty_days', 'density', 'highlight_conflicts', 'show_saturday', 'remember_subject_filter', 'refresh_on_open', 'settings_revision', 'updated_at'],
   Semesters: ['semester_id', 'title', 'start_date', 'weeks_count', 'active'],
   Subjects: ['subject_id', 'name', 'short_name', 'color', 'active'],
   Offerings: ['offering_id', 'semester_id', 'subject_id', 'external_code', 'active'],
@@ -25,6 +26,14 @@ const ALLOWED_DAYS = Object.freeze(['monday', 'tuesday', 'wednesday', 'thursday'
 const ALLOWED_FORMATS = Object.freeze(['online', 'offline', 'hybrid']);
 const ALLOWED_LESSON_TYPES = Object.freeze(['lecture', 'group']);
 const ALLOWED_ROLES = Object.freeze(['user', 'editor', 'admin']);
+const ALLOWED_THEME_MODES = Object.freeze(['light', 'dark', 'system']);
+const ALLOWED_THEME_IDS = Object.freeze(['air-light', 'paper-current', 'stone-light', 'azure-notebook', 'sage-morning', 'midnight-black', 'graphite-current', 'dusk-gray', 'navy-electric', 'plum-night']);
+const ALLOWED_LIGHT_THEME_IDS = Object.freeze(['air-light', 'paper-current', 'stone-light', 'azure-notebook', 'sage-morning']);
+const ALLOWED_DARK_THEME_IDS = Object.freeze(['midnight-black', 'graphite-current', 'dusk-gray', 'navy-electric', 'plum-night']);
+const ALLOWED_REDUCED_MOTION = Object.freeze(['system', 'reduce', 'allow']);
+const ALLOWED_DEFAULT_VIEWS = Object.freeze(['today', 'week', 'subjects']);
+const ALLOWED_INITIAL_WEEKS = Object.freeze(['current', 'last-opened']);
+const ALLOWED_DENSITIES = Object.freeze(['comfortable', 'compact']);
 
 function schedulerError_(code, message, details) {
   const error = new Error(message);

@@ -1,5 +1,6 @@
 import { fallbackSchedule } from '@/data/fallback-schedule';
 import type { ScheduleImportV1, ScheduleUser, UserSchedule } from '@/lib/schedule/types';
+import type { PreferencesPatch, SchedulerPreferences } from '@/lib/theme/theme-storage';
 
 const API_URL = (import.meta.env.VITE_SCHEDULE_API_URL as string | undefined)?.trim() ?? '';
 const CACHE_PREFIX = 'scheduler_cache_v1:';
@@ -268,5 +269,20 @@ export async function updateEnrollments(args: {
     semesterId: args.semesterId,
     enrollments: args.enrollments,
     baseRevision: args.baseRevision,
+  });
+}
+
+export async function updatePreferences(args: {
+  userSlug: string;
+  token: string;
+  baseSettingsRevision: number;
+  patch: PreferencesPatch;
+}) {
+  return post<{ preferences: SchedulerPreferences; preferencesRevision: number }>({
+    action: 'updatePreferences',
+    userSlug: args.userSlug,
+    editToken: args.token,
+    baseSettingsRevision: args.baseSettingsRevision,
+    patch: args.patch,
   });
 }

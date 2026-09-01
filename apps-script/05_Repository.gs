@@ -87,6 +87,7 @@ function buildUserSchedule_(userSlug, semesterId, providedDatabase) {
     };
   });
 
+  const userPreferences = getUserPreferences_(database, user.user_id);
   return {
     users: activeUsers.map(publicUser_).sort(function (a, b) { return a.displayName.localeCompare(b.displayName); }),
     user: publicUser_(user),
@@ -99,6 +100,8 @@ function buildUserSchedule_(userSlug, semesterId, providedDatabase) {
     subjects: subjects,
     lessons: lessons,
     revision: getRevisionFromDb_(database),
+    preferences: userPreferences.preferences,
+    preferencesRevision: userPreferences.preferencesRevision,
   };
 }
 

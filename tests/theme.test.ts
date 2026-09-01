@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import { themes } from '@/lib/theme/theme-registry';
-import { defaultPreferences, validatePreferences } from '@/lib/theme/theme-storage';
+import { applyPreferencesPatch, defaultPreferences, diffPreferences, mergePreferencesPatch, validatePreferences } from '@/lib/theme/theme-storage';
 
 function relativeLuminance(hex: string) {
   const channels = hex.slice(1).match(/.{2}/g)!.map((value) => Number.parseInt(value, 16) / 255)
@@ -40,6 +40,19 @@ describe('theme preferences', () => {
     expect(preferences.appearance.themeId).toBe('navy-electric');
     expect(preferences.schedule).toMatchObject({ defaultView: 'today', density: 'compact', showEmptyDays: false });
     expect(preferences.schedule.refreshOnOpen).toBe(true);
+  });
+
+  it('builds field-level patches without overwriting unrelated preferences', () => {
+    const changed = structuredClone(defaultPreferences);
+    changed.appearance.themeId = 'stone-light';
+    changed.schedule.density = 'compact';
+    const first = diffPreferences(defaultPreferences, changed);
+    const merged = mergePreferencesPatch(first, { schedule: { showSaturday: false } });
+    expect(merged).toEqual({
+      appearance: { themeId: 'stone-light' },
+      schedule: { density: 'compact', showSaturday: false },
+    });
+    expect(applyPreferencesPatch(defaultPreferences, merged).schedule.showEmptyDays).toBe(true);
   });
 
   it('provides readable preview text in every theme', () => {

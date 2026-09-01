@@ -6,7 +6,9 @@ function setupScheduler() {
 
   const database = loadDatabase_();
   if (database.Users.length) {
+    const addedPreferences = ensureUserPreferenceRows_(database);
     assertDatabaseIntegrity_(database);
+    if (addedPreferences) persistDatabase_(database, ['UserPreferences']);
     return {
       spreadsheetId: spreadsheet.getId(),
       seeded: false,
@@ -33,6 +35,7 @@ function createSeedDatabase_(ermolzToken) {
     user_id: 'U001', slug: 'ermolz', display_name: 'Ermolz', role: 'editor',
     edit_token_hash: hashEditToken_(ermolzToken), active: 'yes',
   });
+  database.UserPreferences.push(createDefaultPreferenceRow_('U001'));
   database.Semesters.push({
     semester_id: 'SEM-2026-FALL', title: 'Осінь 2026 / 27', start_date: '2026-09-01',
     weeks_count: '14', active: 'yes',
@@ -142,13 +145,14 @@ function createSchedulerUser(displayName, slug, role) {
       edit_token_hash: hashEditToken_(token), active: 'yes',
     };
     database.Users.push(user);
+    database.UserPreferences.push(createDefaultPreferenceRow_(user.user_id));
     const revision = getRevisionFromDb_(database) + 1;
     setRevisionInDb_(database, revision);
     appendAuditChanges_(database, { user_id: 'SYSTEM', slug: 'system' }, [{
       action: 'CREATE', entityType: 'User', entityId: user.user_id, oldValue: null,
       newValue: { user_id: user.user_id, slug: user.slug, display_name: user.display_name, role: user.role, active: user.active },
     }], revision);
-    persistDatabase_(database, ['Users', 'Meta', 'AuditLog']);
+    persistDatabase_(database, ['Users', 'UserPreferences', 'Meta', 'AuditLog']);
     return { user: publicUser_(user), editToken: token, warning: 'Copy this token now; only its hash is stored.' };
   } finally {
     lock.releaseLock();

@@ -10,7 +10,10 @@
   const darkThemes = ['midnight-black', 'graphite-current', 'dusk-gray', 'navy-electric', 'plum-night'];
   let appearance = defaults;
   try {
-    const stored = JSON.parse(localStorage.getItem('scheduler_preferences_v1') || 'null');
+    const user = localStorage.getItem('scheduler_selected_user_v1') || 'ermolz';
+    const current = JSON.parse(localStorage.getItem('scheduler_preferences_v2:' + user) || 'null');
+    const legacy = JSON.parse(localStorage.getItem('scheduler_preferences_v1') || 'null');
+    const stored = current && current.preferences ? current.preferences : legacy;
     if (stored && stored.version === 1 && stored.appearance) appearance = Object.assign({}, defaults, stored.appearance);
   } catch {}
   const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
