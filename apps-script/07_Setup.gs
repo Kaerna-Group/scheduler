@@ -40,7 +40,7 @@ function createSeedDatabase_(ermolzToken) {
 
   const courses = [
     { subjectId: 'SUB-ELECTRONICS', offeringId: 'OFF-ELECTRONICS-26', code: '564966', name: 'Електроніка та цифрова електроніка', short: 'Електроніка', color: '#f59f65', group: 5 },
-    { subjectId: 'SUB-SCRUM', offeringId: 'OFF-SCRUM-26', code: '565095', name: 'Основи фреймворку Скрам', short: 'Основи Скрам', color: '#7b86c6', group: 3 },
+    { subjectId: 'SUB-SCRUM', offeringId: 'OFF-SCRUM-26', code: '565095', name: 'Основи фреймворку Скрам', short: 'Основи Скрам', color: '#7b86c6', group: 3, groups: [1, 2, 3] },
     { subjectId: 'SUB-WEB-SECURITY', offeringId: 'OFF-WEB-SECURITY-26', code: '565115', name: 'Інформаційна безпека веб-застосунків', short: 'Безпека веб-застосунків', color: '#5f8fdb', group: 4 },
     { subjectId: 'SUB-CRYPTONOMICS', offeringId: 'OFF-CRYPTONOMICS-26', code: 'LOCAL-CRYPTONOMICS', name: 'Криптономіка', short: 'Криптономіка', color: '#4c9d8b', group: 2 },
     { subjectId: 'SUB-CODING-SYSTEMS', offeringId: 'OFF-CODING-SYSTEMS-26', code: 'LOCAL-CODING-SYSTEMS', name: 'Системи кодування інформації', short: 'Системи кодування', color: '#d87575', group: 1 },
@@ -59,22 +59,27 @@ function createSeedDatabase_(ermolzToken) {
       offering_id: course.offeringId, semester_id: 'SEM-2026-FALL', subject_id: course.subjectId,
       external_code: course.code, active: 'yes',
     });
-    const groupId = 'GR-' + course.subjectId.replace('SUB-', '') + '-' + course.group;
-    groupIdByCourse[course.offeringId] = groupId;
-    database.Groups.push({
-      group_id: groupId, offering_id: course.offeringId, group_number: String(course.group),
-      label: course.group + ' група', active: 'yes',
+    (course.groups || [course.group]).forEach(function (groupNumber) {
+      const groupId = 'GR-' + course.subjectId.replace('SUB-', '') + '-' + groupNumber;
+      groupIdByCourse[course.offeringId + ':' + groupNumber] = groupId;
+      database.Groups.push({
+        group_id: groupId, offering_id: course.offeringId, group_number: String(groupNumber),
+        label: groupNumber + ' група', active: 'yes',
+      });
     });
     database.Enrollments.push({
       enrollment_id: 'ENR-ERMOLZ-' + String(index + 1).padStart(2, '0'), user_id: 'U001',
-      offering_id: course.offeringId, group_id: groupId, active: 'yes',
+      offering_id: course.offeringId, group_id: groupIdByCourse[course.offeringId + ':' + course.group], active: 'yes',
     });
   });
 
   const lessons = [
     { id: 'LES-ELECTRONICS-G5', offering: 'OFF-ELECTRONICS-26', type: 'group', group: 5, day: 'wednesday', start: '11:40', end: '13:00', weeks: range_(4, 12), room: '1-001', format: 'offline', teacher: 'І. Раєць' },
     { id: 'LES-ELECTRONICS-LECTURE', offering: 'OFF-ELECTRONICS-26', type: 'lecture', day: 'saturday', start: '08:30', end: '09:50', weeks: range_(3, 11), room: '1-310', format: 'offline', teacher: 'Я. І. Вознюк' },
-    { id: 'LES-SCRUM-G3', offering: 'OFF-SCRUM-26', type: 'group', group: 3, day: 'thursday', start: '15:00', end: '16:20', weeks: range_(1, 14), room: '', format: 'online', teacher: 'О. О. Палієнко' },
+    { id: 'LES-SCRUM-LECTURE', offering: 'OFF-SCRUM-26', type: 'lecture', day: 'thursday', start: '10:00', end: '11:20', weeks: range_(1, 7), room: '', format: 'online', teacher: 'О. О. Палієнко' },
+    { id: 'LES-SCRUM-G1', offering: 'OFF-SCRUM-26', type: 'group', group: 1, day: 'thursday', start: '11:40', end: '13:00', weeks: range_(1, 7), room: '', format: 'online', teacher: 'О. О. Палієнко' },
+    { id: 'LES-SCRUM-G2', offering: 'OFF-SCRUM-26', type: 'group', group: 2, day: 'thursday', start: '13:30', end: '14:50', weeks: range_(1, 7), room: '', format: 'online', teacher: 'О. О. Палієнко' },
+    { id: 'LES-SCRUM-G3', offering: 'OFF-SCRUM-26', type: 'group', group: 3, day: 'thursday', start: '15:00', end: '16:20', weeks: range_(1, 7), room: '', format: 'online', teacher: 'О. О. Палієнко' },
     { id: 'LES-WEB-SECURITY-LECTURE', offering: 'OFF-WEB-SECURITY-26', type: 'lecture', day: 'friday', start: '10:00', end: '11:20', weeks: range_(1, 10), room: '1-225', format: 'offline', teacher: 'Т. А. Бабич' },
     { id: 'LES-WEB-SECURITY-G4', offering: 'OFF-WEB-SECURITY-26', type: 'group', group: 4, day: 'friday', start: '16:30', end: '17:50', weeks: range_(1, 10), room: '1-331', format: 'offline', teacher: 'Т. А. Бабич' },
     { id: 'LES-CRYPTONOMICS-LECTURE', offering: 'OFF-CRYPTONOMICS-26', type: 'lecture', day: 'friday', start: '08:30', end: '09:50', weeks: range_(3, 12), room: '1-223', format: 'hybrid', teacher: 'К. С. Гороховський' },
@@ -94,7 +99,7 @@ function createSeedDatabase_(ermolzToken) {
       teacher: lesson.teacher, active: 'yes',
     });
     if (lesson.group !== undefined) {
-      database.LessonGroups.push({ lesson_id: lesson.id, group_id: groupIdByCourse[lesson.offering] });
+      database.LessonGroups.push({ lesson_id: lesson.id, group_id: groupIdByCourse[lesson.offering + ':' + lesson.group] });
     }
     lesson.weeks.forEach(function (week) {
       database.LessonWeeks.push({ lesson_id: lesson.id, week: String(week) });
@@ -197,6 +202,90 @@ function migrateTymofiiUserToErmolz() {
     assertDatabaseIntegrity_(database);
     persistDatabase_(database, ['Users', 'Meta', 'AuditLog']);
     return { migrated: true, user: publicUser_(legacy), revision: revision };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function migrateScrumSchedule2026() {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(SCHEDULER_CONFIG.lockTimeoutMs);
+  try {
+    const database = loadDatabase_();
+    const offering = database.Offerings.find(function (row) {
+      return row.offering_id === 'OFF-SCRUM-26' ||
+        (row.semester_id === 'SEM-2026-FALL' && row.external_code === '565095');
+    });
+    if (!offering) throw new Error('Scrum offering was not found.');
+
+    const subject = database.Subjects.find(function (row) { return row.subject_id === offering.subject_id; });
+    if (subject) {
+      subject.name = 'Основи фреймворку Скрам';
+      subject.short_name = 'Основи Скрам';
+    }
+
+    const groupsByNumber = {};
+    database.Groups.forEach(function (row) {
+      if (row.offering_id === offering.offering_id && isActive_(row.active)) groupsByNumber[Number(row.group_number)] = row;
+    });
+    [1, 2, 3].forEach(function (groupNumber) {
+      if (groupsByNumber[groupNumber]) return;
+      const group = {
+        group_id: 'GR-SCRUM-' + groupNumber,
+        offering_id: offering.offering_id,
+        group_number: String(groupNumber),
+        label: groupNumber + ' група',
+        active: 'yes',
+      };
+      database.Groups.push(group);
+      groupsByNumber[groupNumber] = group;
+    });
+
+    const oldLessons = database.Lessons.filter(function (row) { return row.offering_id === offering.offering_id; });
+    const oldLessonIds = new Set(oldLessons.map(function (row) { return row.lesson_id; }));
+    database.Lessons = database.Lessons.filter(function (row) { return !oldLessonIds.has(row.lesson_id); });
+    database.LessonGroups = database.LessonGroups.filter(function (row) { return !oldLessonIds.has(row.lesson_id); });
+    database.LessonWeeks = database.LessonWeeks.filter(function (row) { return !oldLessonIds.has(row.lesson_id); });
+
+    const scrumLessons = [
+      { id: 'LES-SCRUM-LECTURE', type: 'lecture', day: 'thursday', start: '10:00', end: '11:20' },
+      { id: 'LES-SCRUM-G1', type: 'group', group: 1, day: 'thursday', start: '11:40', end: '13:00' },
+      { id: 'LES-SCRUM-G2', type: 'group', group: 2, day: 'thursday', start: '13:30', end: '14:50' },
+      { id: 'LES-SCRUM-G3', type: 'group', group: 3, day: 'thursday', start: '15:00', end: '16:20' },
+    ];
+    scrumLessons.forEach(function (lesson) {
+      database.Lessons.push({
+        lesson_id: lesson.id,
+        offering_id: offering.offering_id,
+        type: lesson.type,
+        day: lesson.day,
+        start_time: lesson.start,
+        end_time: lesson.end,
+        format: 'online',
+        room: '',
+        teacher: 'О. О. Палієнко',
+        active: 'yes',
+      });
+      if (lesson.group !== undefined) {
+        database.LessonGroups.push({ lesson_id: lesson.id, group_id: groupsByNumber[lesson.group].group_id });
+      }
+      range_(1, 7).forEach(function (week) {
+        database.LessonWeeks.push({ lesson_id: lesson.id, week: String(week) });
+      });
+    });
+
+    const revision = getRevisionFromDb_(database) + 1;
+    setRevisionInDb_(database, revision);
+    appendAuditChanges_(database, { user_id: 'SYSTEM', slug: 'system' }, [{
+      action: 'UPDATE',
+      entityType: 'Offering',
+      entityId: offering.offering_id,
+      oldValue: { lessons: oldLessons },
+      newValue: { lessons: scrumLessons, weeks: range_(1, 7), groups: [1, 2, 3] },
+    }], revision);
+    assertDatabaseIntegrity_(database);
+    persistDatabase_(database, ['Subjects', 'Groups', 'Lessons', 'LessonGroups', 'LessonWeeks', 'Meta', 'AuditLog']);
+    return { migrated: true, offeringId: offering.offering_id, revision: revision, lessons: scrumLessons.length };
   } finally {
     lock.releaseLock();
   }

@@ -13,8 +13,23 @@ export const lessons: Lesson[] = [
     room: '1-310', format: 'offline', teacher: 'Я. І. Вознюк',
   },
   {
+    id: 'scrum-framework-lecture', subjectId: 'scrum-framework', type: 'lecture',
+    day: 'thursday', startTime: '10:00', endTime: '11:20', weeks: weeks(1, 7),
+    format: 'online', teacher: 'О. О. Палієнко',
+  },
+  {
+    id: 'scrum-framework-group-1', subjectId: 'scrum-framework', type: 'group', group: 1,
+    day: 'thursday', startTime: '11:40', endTime: '13:00', weeks: weeks(1, 7),
+    format: 'online', teacher: 'О. О. Палієнко',
+  },
+  {
+    id: 'scrum-framework-group-2', subjectId: 'scrum-framework', type: 'group', group: 2,
+    day: 'thursday', startTime: '13:30', endTime: '14:50', weeks: weeks(1, 7),
+    format: 'online', teacher: 'О. О. Палієнко',
+  },
+  {
     id: 'scrum-framework-group-3', subjectId: 'scrum-framework', type: 'group', group: 3,
-    day: 'thursday', startTime: '15:00', endTime: '16:20', weeks: weeks(1, 14),
+    day: 'thursday', startTime: '15:00', endTime: '16:20', weeks: weeks(1, 7),
     format: 'online', teacher: 'О. О. Палієнко',
   },
   {

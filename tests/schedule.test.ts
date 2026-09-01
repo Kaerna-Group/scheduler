@@ -95,6 +95,25 @@ describe('seed fixtures', () => {
     expect(names).not.toContain('Інформаційна безпека цільових систем');
   });
 
+  it('contains the corrected Scrum lecture and all three groups only on weeks 1–7', () => {
+    const scrum = fallbackSchedule.subjects.find((subject) => subject.id === 'scrum-framework');
+    const scrumLessons = fallbackSchedule.lessons.filter((lesson) => lesson.subjectId === scrum?.id);
+    expect(scrum).toMatchObject({ selectedGroup: 3, availableGroups: [1, 2, 3] });
+    expect(scrumLessons).toHaveLength(4);
+    expect(scrumLessons.map((lesson) => [lesson.type, lesson.group, lesson.startTime, lesson.endTime])).toEqual([
+      ['lecture', undefined, '10:00', '11:20'],
+      ['group', 1, '11:40', '13:00'],
+      ['group', 2, '13:30', '14:50'],
+      ['group', 3, '15:00', '16:20'],
+    ]);
+    scrumLessons.forEach((lesson) => {
+      expect(lesson.day).toBe('thursday');
+      expect(lesson.weeks).toEqual([1, 2, 3, 4, 5, 6, 7]);
+      expect(lesson.format).toBe('online');
+      expect(lesson.teacher).toBe('О. О. Палієнко');
+    });
+  });
+
   it('merges cached user lists by slug and keeps the newest profile', () => {
     const merged = mergeScheduleUsers(
       [{ id: '1', slug: 'anna', displayName: 'Anna', role: 'user' }],
