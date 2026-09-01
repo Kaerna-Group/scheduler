@@ -56,7 +56,9 @@ export function useSchedule() {
       const remote = await fetchSchedule(userSlug, schedule.semester.id, controller.signal);
       if (activeUserRef.current !== userSlug) return;
       if (remote.preferences && Number.isInteger(remote.preferencesRevision)) {
-        acceptRemotePreferences(userSlug, remote.preferences, remote.preferencesRevision ?? 0, remote.preferencesExists ?? true);
+        const preferencesRevision = remote.preferencesRevision ?? 0;
+        const preferencesExist = remote.preferencesExists ?? preferencesRevision > 0;
+        acceptRemotePreferences(userSlug, remote.preferences, preferencesRevision, preferencesExist);
       }
       setSchedule(remote);
       setSource('remote');
