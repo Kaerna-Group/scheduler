@@ -27,10 +27,10 @@ const { syncLessons_ } = context.importTestApi;
 
 function makeDatabase() {
   return {
-    Groups: [{ group_id: 'GR-4', offering_id: 'OFF-1', group_number: '4', label: '4 група', active: 'yes' }],
+    Groups: [{ group_id: 'GR-4', offering_id: 'OFF-1', group_number: '4', label: 'Group 4', active: 'yes' }],
     Lessons: [
-      { lesson_id: 'LES-LECTURE', offering_id: 'OFF-1', type: 'lecture', day: 'thursday', start_time: '08:30', end_time: '09:50', format: 'online', room: '', teacher: 'Н. Луцька', active: 'yes' },
-      { lesson_id: 'LES-GROUP-4', offering_id: 'OFF-1', type: 'group', day: 'thursday', start_time: '15:00', end_time: '16:20', format: 'online', room: '', teacher: 'Н. Луцька', active: 'yes' },
+      { lesson_id: 'LES-LECTURE', offering_id: 'OFF-1', type: 'lecture', day: 'thursday', start_time: '08:30', end_time: '09:50', format: 'online', room: '', teacher: 'N. Lutska', active: 'yes' },
+      { lesson_id: 'LES-GROUP-4', offering_id: 'OFF-1', type: 'group', day: 'thursday', start_time: '15:00', end_time: '16:20', format: 'online', room: '', teacher: 'N. Lutska', active: 'yes' },
     ],
     LessonGroups: [{ lesson_id: 'LES-GROUP-4', group_id: 'GR-4' }],
     LessonWeeks: [
@@ -42,8 +42,8 @@ function makeDatabase() {
 
 const offering = { offering_id: 'OFF-1', external_code: 'LOCAL-INTELLIGENT-NETWORKS' };
 const actor = { role: 'editor' };
-const lecture = { type: 'lecture', day: 'thursday', startTime: '08:30', endTime: '09:50', weeks: [1, 3, 5, 7, 9, 11, 13], format: 'online', teacher: 'Н. Луцька' };
-const group3 = { type: 'group', group: 3, day: 'thursday', startTime: '13:30', endTime: '14:50', weeks: Array.from({ length: 14 }, (_, index) => index + 1), format: 'online', teacher: 'Н. Луцька' };
+const lecture = { type: 'lecture', day: 'thursday', startTime: '08:30', endTime: '09:50', weeks: [1, 3, 5, 7, 9, 11, 13], format: 'online', teacher: 'N. Lutska' };
+const group3 = { type: 'group', group: 3, day: 'thursday', startTime: '13:30', endTime: '14:50', weeks: Array.from({ length: 14 }, (_, index) => index + 1), format: 'online', teacher: 'N. Lutska' };
 
 {
   const database = makeDatabase();
@@ -60,7 +60,7 @@ const group3 = { type: 'group', group: 3, day: 'thursday', startTime: '13:30', e
   const database = makeDatabase();
   const changes = [];
   const conflicts = [];
-  const overlappingGroup4 = { ...group3, group: 4, startTime: '15:30', endTime: '16:50', teacher: 'Інший викладач' };
+  const overlappingGroup4 = { ...group3, group: 4, startTime: '15:30', endTime: '16:50', teacher: 'Another Teacher' };
   syncLessons_(database, offering, [overlappingGroup4], actor, false, changes, conflicts);
   assert.equal(conflicts.length, 1, 'an overlapping rule for the same group and weeks must conflict');
   assert.equal(database.Lessons.length, 2);
@@ -92,7 +92,7 @@ const group3 = { type: 'group', group: 3, day: 'thursday', startTime: '13:30', e
   const database = makeDatabase();
   const changes = [];
   const conflicts = [];
-  const correctedGroup4 = { ...group3, group: 4, startTime: '15:30', endTime: '16:50', teacher: 'Інший викладач' };
+  const correctedGroup4 = { ...group3, group: 4, startTime: '15:30', endTime: '16:50', teacher: 'Another Teacher' };
   syncLessons_(database, offering, [correctedGroup4], actor, true, changes, conflicts);
   assert.equal(conflicts.length, 0);
   assert.equal(database.Lessons.find((lesson) => lesson.lesson_id === 'LES-GROUP-4').active, 'no');

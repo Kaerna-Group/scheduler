@@ -47,4 +47,4 @@ export interface CachedPreferences {
   migration?: 'legacy-v1';
 }
 
-export type PreferencesSyncStatus = 'saved' | 'saving' | 'local' | 'error';
+export type PreferencesSyncStatus = 'saved' | 'saving' | 'pending' | 'local' | 'error';

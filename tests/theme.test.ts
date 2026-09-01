@@ -6,7 +6,6 @@ import { defaultPreferences } from '@/lib/preferences/defaults';
 import {
   acceptRemotePreferences,
   LEGACY_PREFERENCES_KEY,
-  getActivePreferencesUser,
   preferencesStorageKey,
   readPreferencesRecord,
 } from '@/lib/preferences/local-storage';
@@ -109,12 +108,6 @@ describe('theme preferences', () => {
     expect(preferencesStorageKey('ermolz')).toBe('scheduler_preferences_v2:ermolz');
     expect(preferencesStorageKey('zahar')).toBe('scheduler_preferences_v2:zahar');
     expect(preferencesStorageKey('ermolz')).not.toContain('semester');
-  });
-
-  it('moves the legacy tymofii device selection to ermolz before reading preferences', () => {
-    localStorage.setItem('scheduler_selected_user_v1', 'tymofii');
-    expect(getActivePreferencesUser()).toBe('ermolz');
-    expect(localStorage.getItem('scheduler_selected_user_v1')).toBe('ermolz');
   });
 
   it('provides readable preview text in every theme', () => {

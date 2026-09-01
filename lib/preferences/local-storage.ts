@@ -14,16 +14,10 @@ export const PREFERENCES_EVENT = 'scheduler-preferences-changed';
 export const PREFERENCES_USER_EVENT = 'scheduler-preferences-user-changed';
 const SELECTED_USER_KEY = 'scheduler_selected_user_v1';
 const DEFAULT_USER_SLUG = 'ermolz';
-const LEGACY_USER_SLUG = 'tymofii';
 
 export function getActivePreferencesUser() {
   try {
-    const stored = localStorage.getItem(SELECTED_USER_KEY);
-    if (stored === LEGACY_USER_SLUG) {
-      localStorage.setItem(SELECTED_USER_KEY, DEFAULT_USER_SLUG);
-      return DEFAULT_USER_SLUG;
-    }
-    return stored || DEFAULT_USER_SLUG;
+    return localStorage.getItem(SELECTED_USER_KEY) || DEFAULT_USER_SLUG;
   } catch {
     return DEFAULT_USER_SLUG;
   }

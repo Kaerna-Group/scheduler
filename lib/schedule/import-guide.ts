@@ -6,8 +6,8 @@ export const scheduleImportExample: ScheduleImportV1 = {
   subjects: [
     {
       externalCode: '565095',
-      name: 'Основи фреймворку Скрам',
-      shortName: 'Основи Скрам',
+      name: 'Scrum Framework Fundamentals',
+      shortName: 'Scrum Fundamentals',
       color: '#7b86c6',
       selectedGroup: 3,
       lessons: [
@@ -18,7 +18,7 @@ export const scheduleImportExample: ScheduleImportV1 = {
           endTime: '11:20',
           weeks: [1, 2, 3, 4, 5, 6, 7],
           format: 'online',
-          teacher: 'О. О. Палієнко',
+          teacher: 'O. O. Paliienko',
         },
         {
           type: 'group',
@@ -28,7 +28,7 @@ export const scheduleImportExample: ScheduleImportV1 = {
           endTime: '13:00',
           weeks: [1, 2, 3, 4, 5, 6, 7],
           format: 'online',
-          teacher: 'О. О. Палієнко',
+          teacher: 'O. O. Paliienko',
         },
         {
           type: 'group',
@@ -38,7 +38,7 @@ export const scheduleImportExample: ScheduleImportV1 = {
           endTime: '14:50',
           weeks: [1, 2, 3, 4, 5, 6, 7],
           format: 'online',
-          teacher: 'О. О. Палієнко',
+          teacher: 'O. O. Paliienko',
         },
         {
           type: 'group',
@@ -48,14 +48,14 @@ export const scheduleImportExample: ScheduleImportV1 = {
           endTime: '16:20',
           weeks: [1, 2, 3, 4, 5, 6, 7],
           format: 'online',
-          teacher: 'О. О. Палієнко',
+          teacher: 'O. O. Paliienko',
         },
       ],
     },
     {
       externalCode: 'LOCAL-QUALIFICATION',
-      name: 'Кваліфікаційна робота',
-      shortName: 'Кваліфікаційна робота',
+      name: 'Qualification Project',
+      shortName: 'Qualification Project',
       color: '#a276c7',
       selectedGroup: 2,
       lessons: [],
@@ -64,41 +64,41 @@ export const scheduleImportExample: ScheduleImportV1 = {
 };
 
 export function buildLlmImportPrompt(semesterId: string, weeksCount: number) {
-  return `Преобразуй предоставленное расписание в JSON для импорта на сайт. Верни ТОЛЬКО валидный JSON: без Markdown, без \`\`\`, без комментариев и без пояснений.
+  return `Convert the provided schedule into JSON for importing into the site. Return ONLY valid JSON: no Markdown, no \`\`\`, no comments, and no explanations.
 
-Корневой формат:
+Root format:
 {
   "schemaVersion": 1,
   "semesterId": "${semesterId}",
   "subjects": []
 }
 
-Обязательные правила:
-1. schemaVersion — строго число 1.
-2. semesterId — строго строка "${semesterId}".
-3. subjects — массив дисциплин. externalCode каждой дисциплины уникален в файле.
-4. externalCode — стабильный код дисциплины из источника. Не придумывай новый код, если код известен. Если кода нет, создай один стабильный код вида LOCAL-LATIN-SLUG и не меняй его в следующих импортах.
-5. name и externalCode обязательны. shortName, color, selectedGroup и lessons опциональны.
-6. color, если задан, записывай как #RRGGBB. selectedGroup — положительное целое число.
-7. selectedGroup — персональный выбор пользователя, а не характеристика всей дисциплины. Например, пользователь группы 3 указывает selectedGroup: 3.
-8. lessons принадлежат общей дисциплине. Включи общие лекции и занятия выбранной группы, которые действительно есть в исходном расписании. Не выдумывай занятия других групп: сервер сохранит уже известные группы и добавит новую группу автоматически.
-9. Дисциплина без регулярных занятий допустима: "lessons": [].
-10. Один объект lesson = одно неизменное правило появления занятия: один день, одно время, один тип, один формат, один преподаватель, одна аудитория и один номер группы для указанного набора недель.
-11. Если по разным неделям меняется день, время, формат, аудитория, преподаватель, тип или группа — раздели это на несколько lesson-объектов.
-12. type — строго "lecture" или "group". Для type="group" поле group обязательно и является положительным целым числом. Для общей лекции group не указывай; для лекции конкретной группы group допустим.
-13. day — только "monday", "tuesday", "wednesday", "thursday", "friday" или "saturday". Воскресенье не поддерживается.
-14. startTime и endTime — строго HH:mm с ведущим нулём; начало раньше окончания; занятия через полночь запрещены.
-15. weeks — непустой массив уникальных целых чисел от 1 до ${weeksCount}, отсортированный по возрастанию. Не используй строки, диапазоны "1-14" или слова "чётные/нечётные".
-16. format — строго "offline", "online" или "hybrid".
-17. teacher — обязательная непустая строка. Если преподаватель не назначен, используй "Вакансія".
-18. room опционален. Для online обычно не указывай room; для offline укажи аудиторию, если она известна.
-19. id занятия лучше не указывать: сервер создаёт внутренние идентификаторы сам.
-20. Названия полей и регистр символов должны совпадать со схемой. Не добавляй неизвестные поля.
-21. Не объединяй несколько разных занятий в один lesson. Не создавай отдельный subject для лекции и практики одной дисциплины.
-22. Сохраняй исходное написание названий дисциплин, преподавателей и аудиторий. Не додумывай отсутствующие сведения, кроме LOCAL-кода и значения "Вакансія" по правилам выше.
+Required rules:
+1. schemaVersion must be exactly the number 1.
+2. semesterId must be exactly the string "${semesterId}".
+3. subjects must be an array of courses. Each externalCode must be unique within the file.
+4. externalCode must be the stable course code from the source. Do not invent a new code when one is known. If there is no code, create one stable code in the form LOCAL-LATIN-SLUG and reuse it in later imports.
+5. name and externalCode are required. shortName, color, selectedGroup, and lessons are optional.
+6. If provided, color must use #RRGGBB. selectedGroup must be a positive integer.
+7. selectedGroup is the user's personal choice, not a property of the entire course. For example, a user in group 3 specifies selectedGroup: 3.
+8. lessons belong to the shared course. Include shared lectures and lessons for the selected group that actually appear in the source schedule. Do not invent lessons for other groups: the server preserves known groups and adds the new group automatically.
+9. A course without recurring lessons is valid: "lessons": [].
+10. One lesson object represents one immutable occurrence rule: one day, time, type, format, teacher, room, and group number for the specified set of weeks.
+11. If the day, time, format, room, teacher, type, or group changes between weeks, split it into multiple lesson objects.
+12. type must be exactly "lecture" or "group". For type="group", group is required and must be a positive integer. Omit group for a shared lecture; it is allowed for a group-specific lecture.
+13. day must be "monday", "tuesday", "wednesday", "thursday", "friday", or "saturday". Sunday is not supported.
+14. startTime and endTime must use HH:mm with a leading zero; start must precede end; overnight lessons are forbidden.
+15. weeks must be a non-empty ascending array of unique integers from 1 to ${weeksCount}. Do not use strings, ranges such as "1-14", or words such as "even/odd".
+16. format must be exactly "offline", "online", or "hybrid".
+17. teacher is a required non-empty string. Use "Vacancy" when no teacher is assigned.
+18. room is optional. It is normally omitted for online lessons; provide it for offline lessons when known.
+19. Prefer omitting lesson id: the server creates internal identifiers.
+20. Field names and letter case must match the schema. Do not add unknown fields.
+21. Do not combine different lessons into one lesson object. Do not create separate subjects for the lecture and practice of the same course.
+22. Preserve the source spelling of course names, teachers, and rooms. Do not infer missing information except for the LOCAL code and "Vacancy" value described above.
 
-Пример корректного результата:
+Example of a valid result:
 ${JSON.stringify(scheduleImportExample, null, 2)}
 
-Теперь преобразуй расписание, которое пользователь пришлёт далее.`;
+Now convert the schedule that the user sends next.`;
 }

@@ -3,7 +3,15 @@ function doGet(event) {
     const parameters = event && event.parameter ? event.parameter : {};
     const action = parameters.action || 'health';
     if (action === 'health') {
-      return { status: 'ok', revision: getRevisionFromDb_(loadDatabase_()) };
+      const database = loadDatabase_();
+      const schemaRow = database.Meta.find(function (row) { return row.key === 'schema_version'; });
+      return {
+        status: 'ok',
+        revision: getRevisionFromDb_(database),
+        schemaVersion: schemaRow ? String(schemaRow.value) : null,
+        expectedSchemaVersion: SCHEDULER_CONFIG.schemaVersion,
+        sheets: Object.keys(SCHEDULER_SHEETS),
+      };
     }
     if (action === 'schedule') {
       return buildUserSchedule_(parameters.user, parameters.semester);

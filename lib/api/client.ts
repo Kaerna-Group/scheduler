@@ -32,14 +32,14 @@ export function hasRemoteApi() {
 }
 
 export function createApiUrl() {
-  if (!API_URL) throw new Error('Remote API ще не налаштовано.');
+  if (!API_URL) throw new Error('The remote API is not configured yet.');
   return new URL(API_URL);
 }
 
 export function parseApiResponse<T>(value: unknown): T {
   const response = value as ApiResponse<T>;
   if (!response || typeof response !== 'object' || typeof response.ok !== 'boolean') {
-    throw new Error('Сервер повернув невідомий формат відповіді.');
+    throw new Error('The server returned an unknown response format.');
   }
   if (!response.ok) throw new ApiError(response);
   return response.data;
@@ -51,6 +51,6 @@ export async function postApi<T>(body: Record<string, unknown>) {
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify(body),
   });
-  if (!response.ok) throw new Error(`API недоступне: HTTP ${response.status}.`);
+  if (!response.ok) throw new Error(`The API is unavailable: HTTP ${response.status}.`);
   return parseApiResponse<T>(await response.json());
 }

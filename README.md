@@ -1,14 +1,14 @@
 # Scheduler
 
-Адаптивний React/Vite-розклад із GitHub Pages frontend та реляційним Google Sheets backend через Google Apps Script.
+A responsive React/Vite schedule with a GitHub Pages frontend and a relational Google Sheets backend powered by Google Apps Script.
 
-## Архітектура
+## Architecture
 
 ```text
 React UI
   ├─ useSchedule → Schedule Repository
   └─ usePreferences
-      ├─ useTheme (лише застосування appearance)
+      ├─ useTheme (appearance application only)
       └─ Preferences Repository
           ├─ per-user localStorage cache
           └─ Google Apps Script Web App
@@ -27,18 +27,18 @@ React UI
                   └─ AuditLog
 ```
 
-Frontend отримує `UserSchedule` DTO разом із налаштуваннями власника. Налаштування належать `user_id`, кешуються ключем `scheduler_preferences_v2:<slug>` і мають власний `settings_revision`, незалежний від revision розкладу.
+The frontend receives a `UserSchedule` DTO together with the owner’s preferences. Preferences belong to `user_id`, are cached under `scheduler_preferences_v2:<slug>`, and use an independent `settings_revision` that does not change the schedule revision.
 
-## Локальний запуск
+## Local development
 
 ```bash
 npm install
 npm run dev
 ```
 
-Без `VITE_SCHEDULE_API_URL` сайт працює на fallback-даних. Для remote backend скопіюйте `.env.example` у `.env.local` і додайте URL Apps Script deployment.
+Without `VITE_SCHEDULE_API_URL`, the site uses fallback data. To use the remote backend, copy `.env.example` to `.env.local` and add the Apps Script deployment URL.
 
-## Перевірки
+## Checks
 
 ```bash
 npm test
@@ -46,21 +46,21 @@ npm run build
 npm run apps-script:bundle
 ```
 
-Тести охоплюють конфлікти, імпорт, міграцію preferences, правило server-wins, незалежні revision та token-захист персональних налаштувань.
+Tests cover conflicts, import behavior, preference migration, the server-wins rule, independent revisions, schema upgrades, and token protection for personal preferences.
 
-## Import / Export
+## Import and export
 
-Стандартний формат має `schemaVersion: 1`, `semesterId` та `subjects[]`. JSON є транспортним форматом, але не способом зберігання в Sheets. Приклад: [docs/schedule-import.example.json](docs/schedule-import.example.json).
+The standard transport format contains `schemaVersion: 1`, `semesterId`, and `subjects[]`. JSON is a transport format, not the Sheets storage model. See [docs/schedule-import.example.json](docs/schedule-import.example.json).
 
-Режими імпорту:
+Import modes:
 
-- `merge` — додає або оновлює передані enrollment-и;
-- `replace` — робить JSON повним списком enrollment-ів поточного користувача, не видаляючи глобальні дисципліни або заняття.
+- `merge` adds or updates the provided enrollments;
+- `replace` treats the JSON as the current user’s complete enrollment list without deleting global courses or lessons.
 
-Запис захищений персональним edit token. У bundle зберігається лише публічний frontend; спільних секретів у Vite-коді немає.
+Writes are protected by personal edit tokens. The bundle contains only the public frontend; no shared secrets are included in Vite code.
 
 ## GitHub Pages
 
-Workflow `.github/workflows/deploy.yml` збирає та тестує сайт. URL Apps Script передається через repository variable `SCHEDULE_API_URL`.
+The `.github/workflows/deploy.yml` workflow tests and builds the site. The Apps Script URL is supplied through the `SCHEDULE_API_URL` repository variable.
 
-Налаштування backend описане в [apps-script/README.md](apps-script/README.md).
+Backend setup is documented in [apps-script/README.md](apps-script/README.md).

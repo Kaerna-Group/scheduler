@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { useNetworkStatus } from '@/hooks/use-network-status';
 import { hasRemoteApi } from '@/lib/api/client';
 import {
   acknowledgePreferences,
@@ -15,6 +16,7 @@ import type { CachedPreferences, PreferencesSyncStatus, SchedulerPreferences } f
 import { getStoredEditToken } from '@/lib/schedule/repository';
 
 export function usePreferences() {
+  const online = useNetworkStatus();
   const [userSlug, setUserSlug] = useState(getActivePreferencesUser);
   const [record, setRecord] = useState<CachedPreferences>(() => readPreferencesRecord(getActivePreferencesUser()));
   const [syncStatus, setSyncStatus] = useState<PreferencesSyncStatus>('local');
@@ -54,8 +56,9 @@ export function usePreferences() {
       setSyncError('');
       return;
     }
-    if (!hasRemoteApi() || !token) {
-      setSyncStatus('local');
+    if (!hasRemoteApi() || !token || !online) {
+      setSyncStatus('pending');
+      setSyncError('');
       return;
     }
     const pendingPatch = patch;
@@ -77,13 +80,13 @@ export function usePreferences() {
           }
           if (requestSequence.current !== sequence) return;
           setSyncStatus('error');
-          setSyncError(error instanceof Error ? error.message : 'Не вдалося синхронізувати налаштування.');
+          setSyncError(error instanceof Error ? error.message : 'Could not synchronize preferences.');
         }
       }
       await send(record.preferencesRevision);
     }, 600);
     return () => window.clearTimeout(timer);
-  }, [record.migration, record.pendingPatch, record.preferencesRevision, userSlug]);
+  }, [online, record.migration, record.pendingPatch, record.preferencesRevision, userSlug]);
 
   const setPreferences = useCallback((next: SchedulerPreferences | ((current: SchedulerPreferences) => SchedulerPreferences)) => {
     setRecord((current) => writePreferences(userSlug, typeof next === 'function' ? next(current.preferences) : next));
@@ -98,6 +101,7 @@ export function usePreferences() {
     preferencesRevision: record.preferencesRevision,
     syncStatus,
     syncError,
+    hasPendingChanges: Boolean(record.pendingPatch),
     preferencesUser: userSlug,
   };
 }

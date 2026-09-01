@@ -1,65 +1,79 @@
 # Google Apps Script backend
 
-## Що вже реалізовано
+## Implemented features
 
-- реляційна схема з 12 листів, включно з `UserPreferences`;
-- `setupScheduler()` для створення схеми та початкових даних;
-- `GetUserSchedule` через `GET ?action=schedule&user=...&semester=...`;
-- один DTO для frontend, без join-ів у React;
-- персональні edit token-и, у таблиці зберігається тільки SHA-256 hash;
-- ролі `user`, `editor`, `admin`;
-- preview та виконання JSON import;
-- `merge` і `replace my enrollments`;
-- `COURSE_DATA_CONFLICT` для розбіжностей у спільних Lessons;
-- optimistic concurrency через `baseRevision` / `STALE_DATA`;
-- окремий `settings_revision` та `updatePreferences`, який приймає лише edit token власника;
-- `LockService` на час запису;
-- пакетні записи таблиць;
+- a relational schema with 12 sheets, including `UserPreferences`;
+- schema version 2 with an idempotent upgrade path for existing spreadsheets;
+- `setupScheduler()` for schema creation and seed data;
+- `upgradeSchedulerSchema()` for creating missing sheets, backfilling preference rows, and updating schema metadata;
+- `GetUserSchedule` through `GET ?action=schedule&user=...&semester=...`;
+- a single frontend DTO with no joins in React;
+- personal edit tokens with only SHA-256 hashes stored in Sheets;
+- `user`, `editor`, and `admin` roles;
+- JSON import preview and execution;
+- `merge` and `replace my enrollments` modes;
+- `COURSE_DATA_CONFLICT` for conflicting shared lesson data;
+- optimistic concurrency through `baseRevision` / `STALE_DATA`;
+- independent `settings_revision` and `updatePreferences`, authorized only by the owner’s edit token;
+- `LockService` around writes;
+- batched table writes;
 - `AuditLog`;
-- експорт через frontend.
+- frontend export.
 
-## Розгортання через редактор Google
+## Google editor deployment
 
-1. Створіть порожній Google Spreadsheet.
-2. Відкрийте **Extensions → Apps Script**.
-3. Локально виконайте `npm run apps-script:bundle`.
-4. Скопіюйте вміст `apps-script/dist/Code.gs` у файл `Code.gs` редактора.
-5. Замініть manifest на `apps-script/appsscript.json` у налаштуваннях проєкту.
-6. Запустіть функцію `setupScheduler()` і надайте дозволи.
-7. Скопіюйте `editTokens.ermolz` з результату виконання — відкритий токен більше ніде не зберігається.
-8. Оберіть **Deploy → New deployment → Web app**:
+1. Create an empty Google Spreadsheet.
+2. Open **Extensions → Apps Script**.
+3. Run `npm run apps-script:bundle` locally.
+4. Copy `apps-script/dist/Code.gs` into the editor’s `Code.gs` file.
+5. Replace the manifest with `apps-script/appsscript.json` in project settings.
+6. Run `setupScheduler()` and grant the requested permissions.
+7. Copy `editTokens.ermolz` from the result. The plaintext token is not stored anywhere else.
+8. Select **Deploy → New deployment → Web app**:
    - Execute as: **Me**;
    - Who has access: **Anyone**.
-9. Скопіюйте URL, що закінчується на `/exec`.
-10. У GitHub репозиторії `Kaerna-Group/scheduler` створіть Actions variable `SCHEDULE_API_URL` із цим URL та перезапустіть workflow.
+9. Copy the URL ending in `/exec`.
+10. Create the `SCHEDULE_API_URL` Actions variable in the `Kaerna-Group/scheduler` GitHub repository and rerun the workflow.
 
-## Розгортання через clasp
+For an existing spreadsheet created with schema version 1, deploy the latest code and run `upgradeSchedulerSchema()` once. The function is idempotent: it creates the `UserPreferences` sheet when missing, adds one row for every user, updates `Meta.schema_version` to `2`, preserves `data_revision`, schedule data, and edit tokens, and records the upgrade in `AuditLog`.
 
-Якщо `clasp` авторизований:
+Verify a published deployment through:
+
+```text
+GET /exec?action=health
+```
+
+The response includes `schemaVersion`, `expectedSchemaVersion`, and the complete `sheets` list. Both schema versions must be `2`, and `sheets` must include `UserPreferences`.
+
+## clasp deployment
+
+When `clasp` is authorized:
 
 ```bash
 cd apps-script
 cp .clasp.json.example .clasp.json
-# вставте scriptId
+# insert scriptId
 npx @google/clasp push
 npx @google/clasp deploy --description "Scheduler API"
 ```
 
-`.clasp.json` із реальним script ID не слід комітити.
+Do not commit `.clasp.json` with a real script ID.
 
-## Додавання користувачів
+## Adding users
 
-У редакторі Apps Script запустіть:
+Run this in the Apps Script editor:
 
 ```js
 createSchedulerUser('Zahar', 'zahar', 'user')
 ```
 
-Функція поверне одноразово видимий `editToken`. Передайте його тільки цьому користувачу. Для заміни скомпрометованого токена:
+The function returns a one-time visible `editToken`. Give it only to that user. Rotate a compromised token with:
 
 ```js
 rotateSchedulerEditToken('zahar')
 ```
+
+Every user receives exactly one `UserPreferences` row keyed by `user_id`. Database integrity validation rejects missing, duplicate, or orphan preference rows.
 
 ## API
 
@@ -83,7 +97,7 @@ GET /exec?action=schedule&user=ermolz&semester=SEM-2026-FALL
 }
 ```
 
-POST надсилається як `text/plain;charset=utf-8`, щоб Apps Script web app приймав запит без CORS preflight. Вміст залишається JSON.
+POST uses `text/plain;charset=utf-8` so that an Apps Script web app can accept the request without a CORS preflight. The body remains JSON.
 
 ### Preferences patch
 
@@ -97,10 +111,10 @@ POST надсилається як `text/plain;charset=utf-8`, щоб Apps Scrip
 }
 ```
 
-`settings_revision` не змінює `data_revision`. Навіть admin не може змінити preferences іншого користувача без edit token цього користувача.
+`settings_revision` does not change `data_revision`. Even an administrator cannot change another user’s preferences without that user’s edit token.
 
-## Початкові дані
+## Seed data
 
-Seed містить поточний розклад Ermolz, включно зі Scrum group 3 та Кваліфікаційною роботою без Lessons. Для невідомих університетських кодів використані тимчасові значення `LOCAL-*`; їх потрібно замінити реальними кодами до імпорту розкладів інших користувачів.
+The seed contains the current Ermolz schedule, including Scrum group 3 and the Qualification Project without lessons. Temporary `LOCAL-*` values are used where official university codes are unknown; replace them with real codes before importing schedules for other users.
 
-Для вже створеної таблиці після оновлення коду один раз запустіть `migrateTymofiiUserToErmolz()`. Функція змінює лише slug користувача `U001`, зберігає його token та enrollments і записує зміну в AuditLog.
+For a spreadsheet that still uses the previous user slug, run `migrateTymofiiUserToErmolz()` once. It changes only the `U001` slug, preserves the token and enrollments, and records the change in `AuditLog`.

@@ -33,7 +33,7 @@ function createDefaultPreferenceRow_(userId) {
 function ensureUserPreferenceRows_(database) {
   let added = 0;
   const existing = new Set(database.UserPreferences.map(function (row) { return row.user_id; }));
-  database.Users.filter(function (row) { return isActive_(row.active); }).forEach(function (user) {
+  database.Users.forEach(function (user) {
     if (existing.has(user.user_id)) return;
     database.UserPreferences.push(createDefaultPreferenceRow_(user.user_id));
     existing.add(user.user_id);
@@ -200,11 +200,5 @@ function updatePreferences_(body) {
 }
 
 function setupUserPreferences() {
-  const spreadsheet = getSchedulerSpreadsheet_();
-  ensureSheet_(spreadsheet, 'UserPreferences', SCHEDULER_SHEETS.UserPreferences);
-  const database = loadDatabase_();
-  const added = ensureUserPreferenceRows_(database);
-  assertDatabaseIntegrity_(database);
-  if (added) persistDatabase_(database, ['UserPreferences']);
-  return { users: database.Users.length, added: added };
+  return upgradeSchedulerSchema();
 }

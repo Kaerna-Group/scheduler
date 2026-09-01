@@ -6,13 +6,17 @@ function setupScheduler() {
 
   const database = loadDatabase_();
   if (database.Users.length) {
-    const addedPreferences = ensureUserPreferenceRows_(database);
-    assertDatabaseIntegrity_(database);
-    if (addedPreferences) persistDatabase_(database, ['UserPreferences']);
+    const upgrade = upgradeDatabaseSchema_(database);
+    if (upgrade.changedTables.length) persistDatabase_(database, upgrade.changedTables);
     return {
       spreadsheetId: spreadsheet.getId(),
       seeded: false,
-      message: 'Schema already exists. No data or tokens were changed.',
+      schemaVersion: upgrade.schemaVersion,
+      previousSchemaVersion: upgrade.previousSchemaVersion,
+      preferenceRowsAdded: upgrade.preferenceRowsAdded,
+      message: upgrade.changedTables.length
+        ? 'The existing database schema was upgraded without changing edit tokens or schedule data.'
+        : 'The database schema is current. No data or tokens were changed.',
     };
   }
 
@@ -27,6 +31,64 @@ function setupScheduler() {
   };
 }
 
+function upgradeDatabaseSchema_(database) {
+  const schemaRow = database.Meta.find(function (row) { return row.key === 'schema_version'; });
+  const previousSchemaVersion = schemaRow ? String(schemaRow.value || '') : '';
+  const preferenceRowsAdded = ensureUserPreferenceRows_(database);
+  const schemaChanged = previousSchemaVersion !== SCHEDULER_CONFIG.schemaVersion;
+  const changedTables = [];
+
+  if (schemaChanged) {
+    if (schemaRow) schemaRow.value = SCHEDULER_CONFIG.schemaVersion;
+    else database.Meta.push({ key: 'schema_version', value: SCHEDULER_CONFIG.schemaVersion });
+    changedTables.push('Meta');
+  }
+  if (preferenceRowsAdded) changedTables.push('UserPreferences');
+
+  if (schemaChanged || preferenceRowsAdded) {
+    database.AuditLog.push({
+      timestamp: nowIso_(),
+      actor_user_id: 'SYSTEM',
+      actor_slug: 'system',
+      action: schemaChanged ? 'MIGRATE_SCHEMA' : 'REPAIR_SCHEMA',
+      entity_type: 'Database',
+      entity_id: 'UserPreferences',
+      old_value: JSON.stringify({ schemaVersion: previousSchemaVersion || null }),
+      new_value: JSON.stringify({
+        schemaVersion: SCHEDULER_CONFIG.schemaVersion,
+        preferenceRowsAdded: preferenceRowsAdded,
+      }),
+      revision: String(getRevisionFromDb_(database)),
+    });
+    changedTables.push('AuditLog');
+  }
+
+  assertDatabaseIntegrity_(database);
+  return {
+    previousSchemaVersion: previousSchemaVersion || null,
+    schemaVersion: SCHEDULER_CONFIG.schemaVersion,
+    preferenceRowsAdded: preferenceRowsAdded,
+    changedTables: changedTables,
+  };
+}
+
+function upgradeSchedulerSchema() {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(SCHEDULER_CONFIG.lockTimeoutMs);
+  try {
+    const spreadsheet = getSchedulerSpreadsheet_();
+    Object.keys(SCHEDULER_SHEETS).forEach(function (name) {
+      ensureSheet_(spreadsheet, name, SCHEDULER_SHEETS[name]);
+    });
+    const database = loadDatabase_();
+    const result = upgradeDatabaseSchema_(database);
+    if (result.changedTables.length) persistDatabase_(database, result.changedTables);
+    return Object.assign({ spreadsheetId: spreadsheet.getId() }, result);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function createSeedDatabase_(ermolzToken) {
   const database = {};
   Object.keys(SCHEDULER_SHEETS).forEach(function (name) { database[name] = []; });
@@ -37,19 +99,19 @@ function createSeedDatabase_(ermolzToken) {
   });
   database.UserPreferences.push(createDefaultPreferenceRow_('U001'));
   database.Semesters.push({
-    semester_id: 'SEM-2026-FALL', title: 'Осінь 2026 / 27', start_date: '2026-09-01',
+    semester_id: 'SEM-2026-FALL', title: 'Fall 2026 / 27', start_date: '2026-09-01',
     weeks_count: '14', active: 'yes',
   });
 
   const courses = [
-    { subjectId: 'SUB-ELECTRONICS', offeringId: 'OFF-ELECTRONICS-26', code: '564966', name: 'Електроніка та цифрова електроніка', short: 'Електроніка', color: '#f59f65', group: 5 },
-    { subjectId: 'SUB-SCRUM', offeringId: 'OFF-SCRUM-26', code: '565095', name: 'Основи фреймворку Скрам', short: 'Основи Скрам', color: '#7b86c6', group: 3, groups: [1, 2, 3] },
-    { subjectId: 'SUB-WEB-SECURITY', offeringId: 'OFF-WEB-SECURITY-26', code: '565115', name: 'Інформаційна безпека веб-застосунків', short: 'Безпека веб-застосунків', color: '#5f8fdb', group: 4 },
-    { subjectId: 'SUB-CRYPTONOMICS', offeringId: 'OFF-CRYPTONOMICS-26', code: 'LOCAL-CRYPTONOMICS', name: 'Криптономіка', short: 'Криптономіка', color: '#4c9d8b', group: 2 },
-    { subjectId: 'SUB-CODING-SYSTEMS', offeringId: 'OFF-CODING-SYSTEMS-26', code: 'LOCAL-CODING-SYSTEMS', name: 'Системи кодування інформації', short: 'Системи кодування', color: '#d87575', group: 1 },
-    { subjectId: 'SUB-QUALIFICATION', offeringId: 'OFF-QUALIFICATION-26', code: 'LOCAL-QUALIFICATION', name: 'Кваліфікаційна робота', short: 'Кваліфікаційна робота', color: '#a276c7', group: 2 },
-    { subjectId: 'SUB-INTELLIGENT-NETWORKS', offeringId: 'OFF-INTELLIGENT-NETWORKS-26', code: 'LOCAL-INTELLIGENT-NETWORKS', name: 'Інтелектуальні мережі', short: 'Інтелектуальні мережі', color: '#9b8c51', group: 4 },
-    { subjectId: 'SUB-PARALLEL-PROGRAMMING', offeringId: 'OFF-PARALLEL-PROGRAMMING-26', code: 'LOCAL-PARALLEL-PROGRAMMING', name: 'Багатозадачне та паралельне програмування', short: 'Паралельне програмування', color: '#5c7e83', group: 2 },
+    { subjectId: 'SUB-ELECTRONICS', offeringId: 'OFF-ELECTRONICS-26', code: '564966', name: 'Electronics and Digital Electronics', short: 'Electronics', color: '#f59f65', group: 5 },
+    { subjectId: 'SUB-SCRUM', offeringId: 'OFF-SCRUM-26', code: '565095', name: 'Scrum Framework Fundamentals', short: 'Scrum Fundamentals', color: '#7b86c6', group: 3, groups: [1, 2, 3] },
+    { subjectId: 'SUB-WEB-SECURITY', offeringId: 'OFF-WEB-SECURITY-26', code: '565115', name: 'Web Application Security', short: 'Web Security', color: '#5f8fdb', group: 4 },
+    { subjectId: 'SUB-CRYPTONOMICS', offeringId: 'OFF-CRYPTONOMICS-26', code: 'LOCAL-CRYPTONOMICS', name: 'Cryptonomics', short: 'Cryptonomics', color: '#4c9d8b', group: 2 },
+    { subjectId: 'SUB-CODING-SYSTEMS', offeringId: 'OFF-CODING-SYSTEMS-26', code: 'LOCAL-CODING-SYSTEMS', name: 'Information Coding Systems', short: 'Coding Systems', color: '#d87575', group: 1 },
+    { subjectId: 'SUB-QUALIFICATION', offeringId: 'OFF-QUALIFICATION-26', code: 'LOCAL-QUALIFICATION', name: 'Qualification Project', short: 'Qualification Project', color: '#a276c7', group: 2 },
+    { subjectId: 'SUB-INTELLIGENT-NETWORKS', offeringId: 'OFF-INTELLIGENT-NETWORKS-26', code: 'LOCAL-INTELLIGENT-NETWORKS', name: 'Intelligent Networks', short: 'Intelligent Networks', color: '#9b8c51', group: 4 },
+    { subjectId: 'SUB-PARALLEL-PROGRAMMING', offeringId: 'OFF-PARALLEL-PROGRAMMING-26', code: 'LOCAL-PARALLEL-PROGRAMMING', name: 'Multitasking and Parallel Programming', short: 'Parallel Programming', color: '#5c7e83', group: 2 },
   ];
 
   const groupIdByCourse = {};
@@ -67,7 +129,7 @@ function createSeedDatabase_(ermolzToken) {
       groupIdByCourse[course.offeringId + ':' + groupNumber] = groupId;
       database.Groups.push({
         group_id: groupId, offering_id: course.offeringId, group_number: String(groupNumber),
-        label: groupNumber + ' група', active: 'yes',
+        label: 'Group ' + groupNumber, active: 'yes',
       });
     });
     database.Enrollments.push({
@@ -77,22 +139,22 @@ function createSeedDatabase_(ermolzToken) {
   });
 
   const lessons = [
-    { id: 'LES-ELECTRONICS-G5', offering: 'OFF-ELECTRONICS-26', type: 'group', group: 5, day: 'wednesday', start: '11:40', end: '13:00', weeks: range_(4, 12), room: '1-001', format: 'offline', teacher: 'І. Раєць' },
-    { id: 'LES-ELECTRONICS-LECTURE', offering: 'OFF-ELECTRONICS-26', type: 'lecture', day: 'saturday', start: '08:30', end: '09:50', weeks: range_(3, 11), room: '1-310', format: 'offline', teacher: 'Я. І. Вознюк' },
-    { id: 'LES-SCRUM-LECTURE', offering: 'OFF-SCRUM-26', type: 'lecture', day: 'thursday', start: '10:00', end: '11:20', weeks: range_(1, 7), room: '', format: 'online', teacher: 'О. О. Палієнко' },
-    { id: 'LES-SCRUM-G1', offering: 'OFF-SCRUM-26', type: 'group', group: 1, day: 'thursday', start: '11:40', end: '13:00', weeks: range_(1, 7), room: '', format: 'online', teacher: 'О. О. Палієнко' },
-    { id: 'LES-SCRUM-G2', offering: 'OFF-SCRUM-26', type: 'group', group: 2, day: 'thursday', start: '13:30', end: '14:50', weeks: range_(1, 7), room: '', format: 'online', teacher: 'О. О. Палієнко' },
-    { id: 'LES-SCRUM-G3', offering: 'OFF-SCRUM-26', type: 'group', group: 3, day: 'thursday', start: '15:00', end: '16:20', weeks: range_(1, 7), room: '', format: 'online', teacher: 'О. О. Палієнко' },
-    { id: 'LES-WEB-SECURITY-LECTURE', offering: 'OFF-WEB-SECURITY-26', type: 'lecture', day: 'friday', start: '10:00', end: '11:20', weeks: range_(1, 10), room: '1-225', format: 'offline', teacher: 'Т. А. Бабич' },
-    { id: 'LES-WEB-SECURITY-G4', offering: 'OFF-WEB-SECURITY-26', type: 'group', group: 4, day: 'friday', start: '16:30', end: '17:50', weeks: range_(1, 10), room: '1-331', format: 'offline', teacher: 'Т. А. Бабич' },
-    { id: 'LES-CRYPTONOMICS-LECTURE', offering: 'OFF-CRYPTONOMICS-26', type: 'lecture', day: 'friday', start: '08:30', end: '09:50', weeks: range_(3, 12), room: '1-223', format: 'hybrid', teacher: 'К. С. Гороховський' },
-    { id: 'LES-CRYPTONOMICS-G2', offering: 'OFF-CRYPTONOMICS-26', type: 'group', group: 2, day: 'saturday', start: '11:40', end: '13:00', weeks: range_(3, 12), room: '', format: 'online', teacher: 'К. С. Гороховський' },
-    { id: 'LES-CODING-LECTURE', offering: 'OFF-CODING-SYSTEMS-26', type: 'lecture', day: 'saturday', start: '08:30', end: '09:50', weeks: [1, 3, 5, 7, 9, 11, 12], room: '', format: 'online', teacher: "П. Г. Прокоф'єв" },
-    { id: 'LES-CODING-G1', offering: 'OFF-CODING-SYSTEMS-26', type: 'group', group: 1, day: 'saturday', start: '10:00', end: '11:20', weeks: range_(1, 14), room: '', format: 'online', teacher: "П. Г. Прокоф'єв" },
-    { id: 'LES-NETWORKS-LECTURE', offering: 'OFF-INTELLIGENT-NETWORKS-26', type: 'lecture', day: 'thursday', start: '08:30', end: '09:50', weeks: [1, 3, 5, 7, 9, 11, 13], room: '', format: 'online', teacher: 'Н. Луцька' },
-    { id: 'LES-NETWORKS-G4', offering: 'OFF-INTELLIGENT-NETWORKS-26', type: 'group', group: 4, day: 'thursday', start: '15:00', end: '16:20', weeks: range_(1, 14), room: '', format: 'online', teacher: 'Н. Луцька' },
-    { id: 'LES-PARALLEL-LECTURE', offering: 'OFF-PARALLEL-PROGRAMMING-26', type: 'lecture', day: 'wednesday', start: '10:00', end: '11:20', weeks: range_(2, 12), room: '', format: 'online', teacher: 'Г. І. Малашонок' },
-    { id: 'LES-PARALLEL-G2', offering: 'OFF-PARALLEL-PROGRAMMING-26', type: 'group', group: 2, day: 'wednesday', start: '13:30', end: '14:50', weeks: range_(2, 12), room: '', format: 'online', teacher: 'Г. І. Малашонок' },
+    { id: 'LES-ELECTRONICS-G5', offering: 'OFF-ELECTRONICS-26', type: 'group', group: 5, day: 'wednesday', start: '11:40', end: '13:00', weeks: range_(4, 12), room: '1-001', format: 'offline', teacher: 'I. Raiets' },
+    { id: 'LES-ELECTRONICS-LECTURE', offering: 'OFF-ELECTRONICS-26', type: 'lecture', day: 'saturday', start: '08:30', end: '09:50', weeks: range_(3, 11), room: '1-310', format: 'offline', teacher: 'Ya. I. Vozniuk' },
+    { id: 'LES-SCRUM-LECTURE', offering: 'OFF-SCRUM-26', type: 'lecture', day: 'thursday', start: '10:00', end: '11:20', weeks: range_(1, 7), room: '', format: 'online', teacher: 'O. O. Paliienko' },
+    { id: 'LES-SCRUM-G1', offering: 'OFF-SCRUM-26', type: 'group', group: 1, day: 'thursday', start: '11:40', end: '13:00', weeks: range_(1, 7), room: '', format: 'online', teacher: 'O. O. Paliienko' },
+    { id: 'LES-SCRUM-G2', offering: 'OFF-SCRUM-26', type: 'group', group: 2, day: 'thursday', start: '13:30', end: '14:50', weeks: range_(1, 7), room: '', format: 'online', teacher: 'O. O. Paliienko' },
+    { id: 'LES-SCRUM-G3', offering: 'OFF-SCRUM-26', type: 'group', group: 3, day: 'thursday', start: '15:00', end: '16:20', weeks: range_(1, 7), room: '', format: 'online', teacher: 'O. O. Paliienko' },
+    { id: 'LES-WEB-SECURITY-LECTURE', offering: 'OFF-WEB-SECURITY-26', type: 'lecture', day: 'friday', start: '10:00', end: '11:20', weeks: range_(1, 10), room: '1-225', format: 'offline', teacher: 'T. A. Babych' },
+    { id: 'LES-WEB-SECURITY-G4', offering: 'OFF-WEB-SECURITY-26', type: 'group', group: 4, day: 'friday', start: '16:30', end: '17:50', weeks: range_(1, 10), room: '1-331', format: 'offline', teacher: 'T. A. Babych' },
+    { id: 'LES-CRYPTONOMICS-LECTURE', offering: 'OFF-CRYPTONOMICS-26', type: 'lecture', day: 'friday', start: '08:30', end: '09:50', weeks: range_(3, 12), room: '1-223', format: 'hybrid', teacher: 'K. S. Horokhovskyi' },
+    { id: 'LES-CRYPTONOMICS-G2', offering: 'OFF-CRYPTONOMICS-26', type: 'group', group: 2, day: 'saturday', start: '11:40', end: '13:00', weeks: range_(3, 12), room: '', format: 'online', teacher: 'K. S. Horokhovskyi' },
+    { id: 'LES-CODING-LECTURE', offering: 'OFF-CODING-SYSTEMS-26', type: 'lecture', day: 'saturday', start: '08:30', end: '09:50', weeks: [1, 3, 5, 7, 9, 11, 12], room: '', format: 'online', teacher: 'P. H. Prokofiev' },
+    { id: 'LES-CODING-G1', offering: 'OFF-CODING-SYSTEMS-26', type: 'group', group: 1, day: 'saturday', start: '10:00', end: '11:20', weeks: range_(1, 14), room: '', format: 'online', teacher: 'P. H. Prokofiev' },
+    { id: 'LES-NETWORKS-LECTURE', offering: 'OFF-INTELLIGENT-NETWORKS-26', type: 'lecture', day: 'thursday', start: '08:30', end: '09:50', weeks: [1, 3, 5, 7, 9, 11, 13], room: '', format: 'online', teacher: 'N. Lutska' },
+    { id: 'LES-NETWORKS-G4', offering: 'OFF-INTELLIGENT-NETWORKS-26', type: 'group', group: 4, day: 'thursday', start: '15:00', end: '16:20', weeks: range_(1, 14), room: '', format: 'online', teacher: 'N. Lutska' },
+    { id: 'LES-PARALLEL-LECTURE', offering: 'OFF-PARALLEL-PROGRAMMING-26', type: 'lecture', day: 'wednesday', start: '10:00', end: '11:20', weeks: range_(2, 12), room: '', format: 'online', teacher: 'H. I. Malashonok' },
+    { id: 'LES-PARALLEL-G2', offering: 'OFF-PARALLEL-PROGRAMMING-26', type: 'group', group: 2, day: 'wednesday', start: '13:30', end: '14:50', weeks: range_(2, 12), room: '', format: 'online', teacher: 'H. I. Malashonok' },
   ];
 
   lessons.forEach(function (lesson) {
@@ -224,8 +286,8 @@ function migrateScrumSchedule2026() {
 
     const subject = database.Subjects.find(function (row) { return row.subject_id === offering.subject_id; });
     if (subject) {
-      subject.name = 'Основи фреймворку Скрам';
-      subject.short_name = 'Основи Скрам';
+      subject.name = 'Scrum Framework Fundamentals';
+      subject.short_name = 'Scrum Fundamentals';
     }
 
     const groupsByNumber = {};
@@ -238,7 +300,7 @@ function migrateScrumSchedule2026() {
         group_id: 'GR-SCRUM-' + groupNumber,
         offering_id: offering.offering_id,
         group_number: String(groupNumber),
-        label: groupNumber + ' група',
+        label: 'Group ' + groupNumber,
         active: 'yes',
       };
       database.Groups.push(group);
@@ -267,7 +329,7 @@ function migrateScrumSchedule2026() {
         end_time: lesson.end,
         format: 'online',
         room: '',
-        teacher: 'О. О. Палієнко',
+        teacher: 'O. O. Paliienko',
         active: 'yes',
       });
       if (lesson.group !== undefined) {

@@ -34,7 +34,7 @@ describe('import contract', () => {
     const validation = validateScheduleImport(exported, 14);
     expect(validation.errors).toEqual([]);
     expect(validation.value?.subjects.some((subject) =>
-      subject.name === 'Кваліфікаційна робота' && subject.lessons?.length === 0,
+      subject.name === 'Qualification Project' && subject.lessons?.length === 0,
     )).toBe(true);
   });
 
@@ -64,8 +64,8 @@ describe('import contract', () => {
         { externalCode: '123', name: 'B', lessons: [{ type: 'lecture', day: 'monday', startTime: '10:00', endTime: '11:20', weeks: [72], format: 'online', teacher: 'B' }] },
       ],
     });
-    expect(validation.errors.some((error) => error.includes('дублюється'))).toBe(true);
-    expect(validation.errors.some((error) => error.includes('діапазоном'))).toBe(true);
+    expect(validation.errors.some((error) => error.includes('duplicated'))).toBe(true);
+    expect(validation.errors.some((error) => error.includes('outside'))).toBe(true);
   });
 
   it('validates subject colors and assigns the shared palette when omitted', () => {
@@ -78,21 +78,21 @@ describe('import contract', () => {
   it('keeps the published example and LLM prompt aligned with schema v1', () => {
     expect(validateScheduleImport(scheduleImportExample, 14).errors).toEqual([]);
     const prompt = buildLlmImportPrompt('SEM-2026-FALL', 14);
-    expect(prompt).toContain('ТОЛЬКО валидный JSON');
+    expect(prompt).toContain('ONLY valid JSON');
     expect(prompt).toContain('"semesterId": "SEM-2026-FALL"');
-    expect(prompt).toContain('от 1 до 14');
-    expect(prompt).toContain('Один объект lesson');
-    expect(prompt).toContain('selectedGroup — персональный выбор пользователя');
-    expect(prompt).toContain('сервер сохранит уже известные группы');
+    expect(prompt).toContain('from 1 to 14');
+    expect(prompt).toContain('One lesson object');
+    expect(prompt).toContain("selectedGroup is the user's personal choice");
+    expect(prompt).toContain('the server preserves known groups');
   });
 });
 
 describe('seed fixtures', () => {
   it('contains Scrum and qualification work but no target-security course', () => {
     const names = fallbackSchedule.subjects.map((subject) => subject.name);
-    expect(names).toContain('Основи фреймворку Скрам');
-    expect(names).toContain('Кваліфікаційна робота');
-    expect(names).not.toContain('Інформаційна безпека цільових систем');
+    expect(names).toContain('Scrum Framework Fundamentals');
+    expect(names).toContain('Qualification Project');
+    expect(names).not.toContain('Target Systems Information Security');
   });
 
   it('contains the corrected Scrum lecture and all three groups only on weeks 1–7', () => {
@@ -110,7 +110,7 @@ describe('seed fixtures', () => {
       expect(lesson.day).toBe('thursday');
       expect(lesson.weeks).toEqual([1, 2, 3, 4, 5, 6, 7]);
       expect(lesson.format).toBe('online');
-      expect(lesson.teacher).toBe('О. О. Палієнко');
+      expect(lesson.teacher).toBe('O. O. Paliienko');
     });
   });
 
@@ -118,20 +118,12 @@ describe('seed fixtures', () => {
     const merged = mergeScheduleUsers(
       [{ id: '1', slug: 'anna', displayName: 'Anna', role: 'user' }],
       [
-        { id: '1', slug: 'anna', displayName: 'Анна', role: 'editor' },
-        { id: '2', slug: 'bohdan', displayName: 'Богдан', role: 'user' },
+        { id: '1', slug: 'anna', displayName: 'Anna Updated', role: 'editor' },
+        { id: '2', slug: 'bohdan', displayName: 'Bohdan', role: 'user' },
       ],
     );
     expect(merged).toHaveLength(2);
-    expect(merged.find((user) => user.slug === 'anna')).toMatchObject({ displayName: 'Анна', role: 'editor' });
+    expect(merged.find((user) => user.slug === 'anna')).toMatchObject({ displayName: 'Anna Updated', role: 'editor' });
   });
 
-  it('migrates the legacy tymofii identity to ermolz in user caches', () => {
-    const merged = mergeScheduleUsers([
-      { id: 'U001', slug: 'tymofii', displayName: 'Tymofii', role: 'editor' },
-    ]);
-    expect(merged).toEqual([
-      { id: 'U001', slug: 'ermolz', displayName: 'Ermolz', role: 'editor' },
-    ]);
-  });
 });

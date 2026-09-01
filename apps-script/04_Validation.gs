@@ -25,9 +25,11 @@ function assertDatabaseIntegrity_(database) {
   const offeringIds = new Set(database.Offerings.map(function (row) { return row.offering_id; }));
   const groupIds = new Set(database.Groups.map(function (row) { return row.group_id; }));
   const lessonIds = new Set(database.Lessons.map(function (row) { return row.lesson_id; }));
+  const preferenceUserIds = new Set(database.UserPreferences.map(function (row) { return row.user_id; }));
 
   database.Users.forEach(function (row) {
     if (ALLOWED_ROLES.indexOf(row.role) === -1) throw schedulerError_('INTEGRITY_ERROR', 'Invalid role for ' + row.slug);
+    if (!preferenceUserIds.has(row.user_id)) throw schedulerError_('INTEGRITY_ERROR', 'UserPreferences is missing user: ' + row.user_id);
   });
 
   database.UserPreferences.forEach(function (row) {

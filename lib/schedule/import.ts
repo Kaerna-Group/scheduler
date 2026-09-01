@@ -25,10 +25,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export function validateScheduleImport(input: unknown, weeksCount = 14): ImportValidationResult {
   const errors: string[] = [];
-  if (!isRecord(input)) return { errors: ['Кореневе значення має бути JSON-об’єктом.'] };
-  if (input.schemaVersion !== 1) errors.push('schemaVersion має дорівнювати 1.');
-  if (typeof input.semesterId !== 'string' || !input.semesterId.trim()) errors.push('semesterId є обов’язковим.');
-  if (!Array.isArray(input.subjects)) errors.push('subjects має бути масивом.');
+  if (!isRecord(input)) return { errors: ['The root value must be a JSON object.'] };
+  if (input.schemaVersion !== 1) errors.push('schemaVersion must equal 1.');
+  if (typeof input.semesterId !== 'string' || !input.semesterId.trim()) errors.push('semesterId is required.');
+  if (!Array.isArray(input.subjects)) errors.push('subjects must be an array.');
 
   const subjects: ImportSubject[] = [];
   const codes = new Set<string>();
@@ -37,35 +37,35 @@ export function validateScheduleImport(input: unknown, weeksCount = 14): ImportV
     input.subjects.forEach((rawSubject, subjectIndex) => {
       const prefix = `subjects[${subjectIndex}]`;
       if (!isRecord(rawSubject)) {
-        errors.push(`${prefix} має бути об’єктом.`);
+        errors.push(`${prefix} must be an object.`);
         return;
       }
 
       const externalCode = typeof rawSubject.externalCode === 'string' ? rawSubject.externalCode.trim() : '';
       const name = typeof rawSubject.name === 'string' ? rawSubject.name.trim() : '';
-      if (!externalCode) errors.push(`${prefix}.externalCode є обов’язковим.`);
-      if (!name) errors.push(`${prefix}.name є обов’язковим.`);
-      if (externalCode && codes.has(externalCode)) errors.push(`${prefix}.externalCode дублюється: ${externalCode}.`);
+      if (!externalCode) errors.push(`${prefix}.externalCode is required.`);
+      if (!name) errors.push(`${prefix}.name is required.`);
+      if (externalCode && codes.has(externalCode)) errors.push(`${prefix}.externalCode is duplicated: ${externalCode}.`);
       codes.add(externalCode);
 
       const selectedGroup = rawSubject.selectedGroup === undefined ? undefined : Number(rawSubject.selectedGroup);
       if (selectedGroup !== undefined && (!Number.isInteger(selectedGroup) || selectedGroup < 1)) {
-        errors.push(`${prefix}.selectedGroup має бути додатним цілим числом.`);
+        errors.push(`${prefix}.selectedGroup must be a positive integer.`);
       }
       if (rawSubject.color !== undefined && !isSubjectColor(rawSubject.color)) {
-        errors.push(`${prefix}.color має бути у форматі #RRGGBB.`);
+        errors.push(`${prefix}.color must use the #RRGGBB format.`);
       }
 
       const normalizedLessons: ImportLesson[] = [];
       if (rawSubject.lessons !== undefined && !Array.isArray(rawSubject.lessons)) {
-        errors.push(`${prefix}.lessons має бути масивом.`);
+        errors.push(`${prefix}.lessons must be an array.`);
       }
 
       if (Array.isArray(rawSubject.lessons)) {
         rawSubject.lessons.forEach((rawLesson, lessonIndex) => {
           const lessonPrefix = `${prefix}.lessons[${lessonIndex}]`;
           if (!isRecord(rawLesson)) {
-            errors.push(`${lessonPrefix} має бути об’єктом.`);
+            errors.push(`${lessonPrefix} must be an object.`);
             return;
           }
 
@@ -77,25 +77,25 @@ export function validateScheduleImport(input: unknown, weeksCount = 14): ImportV
           const teacher = typeof rawLesson.teacher === 'string' ? rawLesson.teacher.trim() : '';
           const group = rawLesson.group === undefined ? undefined : Number(rawLesson.group);
 
-          if (!types.has(type)) errors.push(`${lessonPrefix}.type має бути lecture або group.`);
-          if (!days.has(day)) errors.push(`${lessonPrefix}.day має неприпустиме значення.`);
-          if (!formats.has(format)) errors.push(`${lessonPrefix}.format має неприпустиме значення.`);
+          if (!types.has(type)) errors.push(`${lessonPrefix}.type must be lecture or group.`);
+          if (!days.has(day)) errors.push(`${lessonPrefix}.day has an invalid value.`);
+          if (!formats.has(format)) errors.push(`${lessonPrefix}.format has an invalid value.`);
           if (!timePattern.test(startTime) || !timePattern.test(endTime) || startTime >= endTime) {
-            errors.push(`${lessonPrefix}: час має бути у форматі HH:MM, а початок — раніше завершення.`);
+            errors.push(`${lessonPrefix}: time must use HH:MM and start must precede end.`);
           }
-          if (!teacher) errors.push(`${lessonPrefix}.teacher є обов’язковим.`);
+          if (!teacher) errors.push(`${lessonPrefix}.teacher is required.`);
           if (type === 'group' && (!Number.isInteger(group) || Number(group) < 1)) {
-            errors.push(`${lessonPrefix}.group є обов’язковим для групового заняття.`);
+            errors.push(`${lessonPrefix}.group is required for a group lesson.`);
           }
           if (!Array.isArray(rawLesson.weeks) || rawLesson.weeks.length === 0) {
-            errors.push(`${lessonPrefix}.weeks має містити хоча б один тиждень.`);
+            errors.push(`${lessonPrefix}.weeks must contain at least one week.`);
           }
 
           const weeks = Array.isArray(rawLesson.weeks)
             ? [...new Set(rawLesson.weeks.map(Number))].sort((a, b) => a - b)
             : [];
           if (weeks.some((week) => !Number.isInteger(week) || week < 1 || week > weeksCount)) {
-            errors.push(`${lessonPrefix}.weeks містить тиждень поза діапазоном 1–${weeksCount}.`);
+            errors.push(`${lessonPrefix}.weeks contains a week outside the 1–${weeksCount} range.`);
           }
 
           normalizedLessons.push({

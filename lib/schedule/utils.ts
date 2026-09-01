@@ -3,12 +3,12 @@ import type { Lesson, WeekDay } from '@/lib/schedule/types';
 export const dayOrder: WeekDay[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
 export const dayLabels: Record<WeekDay, string> = {
-  monday: 'Понеділок', tuesday: 'Вівторок', wednesday: 'Середа',
-  thursday: 'Четвер', friday: "П'ятниця", saturday: 'Субота',
+  monday: 'Monday', tuesday: 'Tuesday', wednesday: 'Wednesday',
+  thursday: 'Thursday', friday: 'Friday', saturday: 'Saturday',
 };
 
 export const dayLabelsShort: Record<WeekDay, string> = {
-  monday: 'Пн', tuesday: 'Вт', wednesday: 'Ср', thursday: 'Чт', friday: 'Пт', saturday: 'Сб',
+  monday: 'Mon', tuesday: 'Tue', wednesday: 'Wed', thursday: 'Thu', friday: 'Fri', saturday: 'Sat',
 };
 
 export function getLessonsForDay(source: Lesson[], week: number, day: WeekDay, subjectId = 'all') {

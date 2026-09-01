@@ -1,6 +1,6 @@
 const SCHEDULER_CONFIG = Object.freeze({
   spreadsheetProperty: 'SCHEDULER_SPREADSHEET_ID',
-  schemaVersion: '1',
+  schemaVersion: '2',
   defaultSemesterId: 'SEM-2026-FALL',
   revisionKey: 'data_revision',
   tokenBytes: 32,

@@ -40,7 +40,7 @@ export function AccessGate({ children }: { children: ReactNode }) {
 
     try {
       if ((await hashPin(pin)) !== PIN_HASH) {
-        setError('Невірний PIN. Спробуй ще раз.');
+        setError('Incorrect PIN. Try again.');
         setPin('');
         return;
       }
@@ -68,7 +68,7 @@ export function AccessGate({ children }: { children: ReactNode }) {
             <CalendarDays className="size-5" strokeWidth={1.8} />
           </div>
           <div className="flex items-center gap-1.5 rounded-full bg-success-soft px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.1em] text-success-foreground">
-            <ShieldCheck className="size-3.5" /> Приватний доступ
+            <ShieldCheck className="size-3.5" /> Private access
           </div>
         </div>
 
@@ -76,10 +76,10 @@ export function AccessGate({ children }: { children: ReactNode }) {
           <div className="mb-4 grid size-10 place-items-center rounded-full bg-warning-soft text-warning">
             <LockKeyhole className="size-[18px]" />
           </div>
-          <p className="text-[10px] font-bold uppercase tracking-[0.17em] text-muted-foreground">Мій розклад</p>
-          <h1 className="mt-2 text-[32px] font-semibold leading-[1.08] tracking-[-0.055em] text-foreground">Введи PIN-код</h1>
+          <p className="text-[10px] font-bold uppercase tracking-[0.17em] text-muted-foreground">My Schedule</p>
+          <h1 className="mt-2 text-[32px] font-semibold leading-[1.08] tracking-[-0.055em] text-foreground">Enter your PIN</h1>
           <p className="mt-3 max-w-sm text-sm leading-relaxed text-muted-foreground">
-            Чотири цифри — і розклад відкриється. На цьому пристрої повторно вводити код не доведеться.
+            Enter four digits to open the schedule. You will not need to enter the code again on this device.
           </p>
         </div>
 
@@ -94,7 +94,7 @@ export function AccessGate({ children }: { children: ReactNode }) {
                 if (error) setError('');
               }}
               containerClassName="justify-center"
-              aria-label="Чотиризначний PIN-код"
+              aria-label="Four-digit PIN"
             >
               <InputOTPGroup className="gap-2">
                 {[0, 1, 2, 3].map((index) => (
@@ -115,12 +115,12 @@ export function AccessGate({ children }: { children: ReactNode }) {
               className="mt-2 h-12 w-full rounded-[16px] bg-primary text-sm font-semibold text-primary-foreground hover:bg-primary-hover"
             >
               <KeyRound className="size-4" />
-              {busy ? 'Перевіряю…' : 'Відкрити розклад'}
+              {busy ? 'Checking…' : 'Open schedule'}
             </Button>
           </form>
 
         <p className="mt-6 text-center text-[11px] leading-relaxed text-muted-foreground">
-          Локальний захист від випадкових відвідувачів
+          Local protection against accidental visitors
         </p>
       </section>
     </main>

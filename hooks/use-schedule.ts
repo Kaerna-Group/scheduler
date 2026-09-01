@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { semester as fallbackSemester } from '@/data/semester';
+import { useNetworkStatus } from '@/hooks/use-network-status';
+import { readOnlineStatus } from '@/lib/network/connectivity';
 import {
   fetchSchedule,
   getFallbackSchedule,
@@ -13,14 +15,12 @@ import { acceptRemotePreferences, activatePreferencesUser, readPreferences } fro
 import type { ScheduleSource, UserSchedule } from '@/lib/schedule/types';
 
 const USER_KEY = 'scheduler_selected_user_v1';
-const LEGACY_USER_SLUG = 'tymofii';
 const DEFAULT_USER_SLUG = 'ermolz';
 
 function initialUser() {
   try {
     const users = readCachedUsers();
-    const rawStored = localStorage.getItem(USER_KEY);
-    const stored = rawStored === LEGACY_USER_SLUG ? DEFAULT_USER_SLUG : rawStored;
+    const stored = localStorage.getItem(USER_KEY);
     return users.some((user) => user.slug === stored) ? String(stored) : (users[0]?.slug ?? DEFAULT_USER_SLUG);
   } catch {
     return DEFAULT_USER_SLUG;
@@ -28,6 +28,7 @@ function initialUser() {
 }
 
 export function useSchedule() {
+  const online = useNetworkStatus();
   const [selectedUser, setSelectedUserState] = useState(initialUser);
   const [schedule, setSchedule] = useState<UserSchedule>(() =>
     readCachedSchedule(initialUser(), fallbackSemester.id) ?? getFallbackSchedule(initialUser()),
@@ -39,9 +40,10 @@ export function useSchedule() {
   const [error, setError] = useState('');
   const requestRef = useRef<AbortController | null>(null);
   const activeUserRef = useRef(selectedUser);
+  const previousOnlineRef = useRef(online);
 
   const refresh = useCallback(async (userSlug: string) => {
-    if (!hasRemoteApi()) {
+    if (!hasRemoteApi() || !readOnlineStatus()) {
       setLoading(false);
       return;
     }
@@ -64,11 +66,22 @@ export function useSchedule() {
       setSource('remote');
     } catch (requestError) {
       if (controller.signal.aborted || activeUserRef.current !== userSlug) return;
-      setError(requestError instanceof Error ? requestError.message : 'Не вдалося оновити розклад.');
+      setError(requestError instanceof Error ? requestError.message : 'Could not refresh the schedule.');
     } finally {
       if (!controller.signal.aborted && activeUserRef.current === userSlug) setLoading(false);
     }
   }, [schedule.semester.id]);
+
+  useEffect(() => {
+    const cameOnline = online && !previousOnlineRef.current;
+    previousOnlineRef.current = online;
+    if (!online) {
+      requestRef.current?.abort();
+      setLoading(false);
+      return;
+    }
+    if (cameOnline && hasRemoteApi()) void refresh(activeUserRef.current);
+  }, [online, refresh]);
 
   useEffect(() => {
     if (readPreferences(selectedUser).schedule.refreshOnOpen) void refresh(selectedUser);
@@ -120,5 +133,6 @@ export function useSchedule() {
     refresh: () => refresh(selectedUser),
     remoteConfigured: hasRemoteApi(),
     lastSync: readLastSync(selectedUser, schedule.semester.id),
+    online,
   };
 }

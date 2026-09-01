@@ -11,7 +11,7 @@ function findOrCreateGroup_(database, offering, groupNumber, actor, changes) {
     group_id: newId_('GR'),
     offering_id: offering.offering_id,
     group_number: String(numericGroup),
-    label: numericGroup + ' група',
+    label: 'Group ' + numericGroup,
     active: 'yes',
   };
   database.Groups.push(group);
