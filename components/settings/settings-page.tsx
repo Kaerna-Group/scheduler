@@ -82,6 +82,12 @@ export function SettingsPage() {
   const sourceLabel = source === 'remote' ? 'Remote · Google Sheets' : source === 'cache' ? 'Кеш цього пристрою' : 'Локальний приклад';
   const formattedSync = useMemo(() => lastSync ? new Intl.DateTimeFormat('uk-UA', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(lastSync)) : 'Ще не виконувалась', [lastSync]);
 
+  function scrollToSection(sectionId: string) {
+    const motion = document.documentElement.dataset.reducedMotion;
+    const reduceMotion = motion === 'reduce' || (motion === 'system' && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    document.getElementById(sectionId)?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+  }
+
   function selectMode(mode: ThemeMode) {
     if (mode === 'system') updateAppearance({ mode });
     else {
@@ -145,12 +151,12 @@ export function SettingsPage() {
         <div className="mb-8"><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-accent">Локально на пристрої</p><h1 className="mt-2 text-4xl font-semibold tracking-[-0.055em] sm:text-5xl">Налаштування</h1><p className="mt-3 text-sm text-muted-foreground">Зміни зберігаються на цьому пристрої. Синхронізація розкладу працює окремо.</p></div>
 
         <nav className="sticky top-3 z-30 mb-5 flex gap-2 overflow-x-auto rounded-[18px] border border-border bg-background/90 p-2 backdrop-blur-xl lg:hidden" aria-label="Розділи налаштувань">
-          {sections.map(([id, label]) => <a key={id} href={`#${id}`} className="shrink-0 rounded-xl px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground">{label}</a>)}
+          {sections.map(([id, label]) => <button key={id} type="button" onClick={() => scrollToSection(id)} className="shrink-0 rounded-xl px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground">{label}</button>)}
         </nav>
 
         <div className="grid items-start gap-7 lg:grid-cols-[230px_minmax(0,840px)]">
           <aside className="sticky top-6 hidden rounded-[22px] border border-border bg-card p-3 lg:block">
-            <nav className="space-y-1" aria-label="Розділи налаштувань">{sections.map(([id, label, Icon]) => <a key={id} href={`#${id}`} className="flex items-center gap-3 rounded-[13px] px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"><Icon className="size-4" />{label}</a>)}</nav>
+            <nav className="space-y-1" aria-label="Розділи налаштувань">{sections.map(([id, label, Icon]) => <button key={id} type="button" onClick={() => scrollToSection(id)} className="flex w-full items-center gap-3 rounded-[13px] px-3 py-2.5 text-left text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"><Icon className="size-4" />{label}</button>)}</nav>
           </aside>
 
           <div className="space-y-5">

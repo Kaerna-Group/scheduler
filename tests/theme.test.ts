@@ -69,4 +69,10 @@ describe('theme preferences', () => {
       expect(source, path).not.toMatch(/\b(?:bg-white|text-white)\b/);
     });
   });
+
+  it('keeps settings section navigation inside the settings route', () => {
+    const source = readFileSync(new URL('../components/settings/settings-page.tsx', import.meta.url), 'utf8');
+    expect(source).toContain('scrollIntoView');
+    expect(source).not.toContain('href={`#${id}`}');
+  });
 });
