@@ -59,6 +59,7 @@ function getCachedUserSchedule_(userSlug, requestedSemesterId) {
   const lock = LockService.getScriptLock();
   lock.waitLock(SCHEDULER_CONFIG.lockTimeoutMs);
   try {
+    assertSchemaMigrationIdle_();
     const spreadsheet = getSchedulerSpreadsheet_();
     const metadata = {};
     ['Meta', 'Users', 'Semesters', 'UserPreferences'].forEach(function (name) {

@@ -1,21 +1,19 @@
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
-import { readFileSync, readdirSync } from 'node:fs';
 import vm from 'node:vm';
+import { readAppsScriptSource } from './apps-script-sources.mjs';
 
 // Execute the actual backend together, with real SHA-256 authentication and integrity
 // validation. Only Apps Script I/O is replaced; writes commit a fresh database snapshot.
-const directory = new URL('../apps-script/', import.meta.url);
-const source = readdirSync(directory)
-  .filter((name) => /^\d+_.*\.gs$/.test(name))
-  .sort()
-  .map((name) => readFileSync(new URL(name, directory), 'utf8'))
-  .join('\n');
+const source = readAppsScriptSource();
 let database;
 let writes = 0;
 let locks = 0;
 const context = vm.createContext({
   console: { error() {} },
+  PropertiesService: {
+    getScriptProperties: () => ({ getProperty: () => null }),
+  },
   Utilities: {
     getUuid: randomUUID,
     DigestAlgorithm: { SHA_256: 'sha256' },

@@ -57,6 +57,7 @@ const admin: ScheduleUser = {
 
 beforeEach(() => {
   localStorage.clear();
+  sessionStorage.clear();
   window.location.hash = '';
 });
 afterEach(() => {

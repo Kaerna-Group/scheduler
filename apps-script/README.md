@@ -3,7 +3,7 @@
 ## Implemented features
 
 - a relational schema with 12 sheets, including `UserPreferences`;
-- schema version 2 with an idempotent upgrade path for existing spreadsheets;
+- schema version 2 with ordered, journaled migrations and safe retry after interrupted writes;
 - `setupScheduler()` for schema creation and seed data;
 - `upgradeSchedulerSchema()` for creating missing sheets, backfilling preference rows, and updating schema metadata;
 - `GetUserSchedule` through `GET ?action=schedule&user=...&semester=...`;
@@ -38,6 +38,44 @@
 
 For an existing spreadsheet, deploy the latest code and run `upgradeSchedulerSchema()` once. The function is idempotent: it creates missing schema pieces, backfills preference rows and `Meta.current_semester_id`, preserves `data_revision`, schedule data, and edit tokens, and records the upgrade in `AuditLog`. Give at least one trusted user the `admin` role in `Users` to manage semesters; fresh installations seed `ermolz` as admin.
 
+## Schema migrations and recovery
+
+`14_Migrations.gs` owns the runner and the immutable, consecutive registry. Step implementations live in `migrations/`, separate from setup, API handlers and manual content corrections:
+
+| Version | Migration | Effect |
+| --- | --- | --- |
+| 0 | Unversioned legacy database | A missing `Meta.schema_version` is treated as 0; this is not a reason to reseed. |
+| 1 | `001-relational-baseline` | Records the baseline version and initializes a missing data revision to 0. Existing rows remain unchanged. |
+| 2 | `002-user-preferences-and-current-semester` | Adds missing personal preference rows and current-semester metadata; preserves existing preferences and their revisions. |
+
+The current Sheets schema remains **2**, independent of API v1 and browser storage v3. No artificial schema-v3 migration was added. Fresh empty installations seed the current schema directly. A spreadsheet with any existing scheduler rows is never reseeded just because `Users` is empty.
+
+### Running and retrying
+
+1. Back up the spreadsheet before a schema change. Publish the reviewed backend to the existing deployment first, so API requests use the migration guard. Pause other writers/old deployments that do not implement the guard.
+2. Run `upgradeSchedulerSchema()` in Apps Script. It holds the script lock, checks the registry and stored version, then runs only missing versions in order. It never downgrades a newer schema or silently accepts malformed/duplicate version metadata.
+3. Inspect `appliedMigrations`, `resumedMigrations`, `repairs`, `schemaVersion` and `changedTables` in the result. A successful repeat is a no-op. Current-schema repairs are separately audited as `REPAIR_SCHEMA`, not another execution of migration 2.
+4. If execution fails or times out, correct the external failure and rerun the **same function**. Do not manually clear the journal, reset `schema_version`, edit affected Sheets rows, or run a second writer while recovery is pending.
+
+Before touching Sheets, each step stores its complete target rows and checksum in a private, workbook-bound Script Properties journal. This is a durable write-ahead plan, not `CacheService`: recovery rewrites exactly that target, even if a previous `writeTable_()` cleared a table before failing. The runner flushes data and AuditLog first, then writes and flushes Meta last. The manifest is removed only after successful writes and cache invalidation. Failed acknowledgements/cleanup can safely replay the same audit rows without appending duplicates. Completed earlier steps are not replayed.
+
+API reads/writes return `SCHEMA_MIGRATION_PENDING` while the manifest exists. The schedule cache cannot hide an incomplete migration; recovery changes its epoch even though these schema migrations preserve `data_revision`. The guard protects this backend, not direct human edits or unrelated scripts.
+
+The recovery plan is capped at **200,000 UTF-8 bytes**, split into Unicode-safe properties smaller than 9 KB. This leaves headroom within [Apps Script property quotas](https://developers.google.com/apps-script/guides/services/quotas). A larger plan fails with `MIGRATION_TOO_LARGE` **before any Sheets changes**; split the operation or implement a reviewed larger durable journal first. The plan includes changed tables' audit history, so a large AuditLog can also reach this cap. Incomplete staging can leave inactive chunks, cleaned on the next invocation; it does not block the API or change Sheets.
+
+`MIGRATION_JOURNAL_INVALID` means missing/corrupt chunks, an incompatible migration, or a different spreadsheet ID. Preserve the journal and backup; restore the matching backend/workbook before retrying. Never remove it merely to make the API available. A higher stored schema is refused without touching data. Unexpected headers in populated tables require an explicit reviewed column migration; the runner will not guess, rename or overwrite them.
+
+Initial seeding also uses the journal. If seeding was interrupted, retrying setup recovers the staged rows without generating another account/token. The original plaintext token is not stored in the journal; if it was never returned, recover first and explicitly run `rotateSchedulerEditToken('ermolz')` to obtain a replacement.
+
+### Adding a future version
+
+- Add the next numbered `.gs` implementation under `migrations/`, register its unique ID and next consecutive integer in `SCHEDULER_MIGRATIONS`, and raise `SCHEDULER_CONFIG.schemaVersion` together.
+- Never edit/reorder released steps or reuse their IDs. Migration code transforms the supplied in-memory database only; external I/O belongs to the runner. Versioned defaults must not depend on future frontend defaults.
+- Add version-aware integrity checks and, where needed, explicit safe header transformations. Destructive/renamed columns are intentionally not automatically supported by the ordinary row-write path.
+- Register narrowly scoped current-version repairs separately. Test upgrading from each supported older version, no-op repeats, partial writes, lost acknowledgements, quota failures, cache bypass, and recovery with the same audit result.
+
+`npm run test:migrations` exercises the actual runner and real backend code with isolated Sheets/Properties I/O. It includes a test-only third migration; the shipped registry still ends at 2. `npm run check` runs these tests too. The shared source loader includes `migrations/` and `maintenance/` in both tests and the generated bundle, never `dist/` or credential files. The historical `maintenance/01_Scrum2026.gs` helper is manual and is never invoked by the schema runner.
+
 Verify a published deployment through:
 
 ```text
@@ -66,7 +104,7 @@ clasp.cmd list-deployments
 
 Before the first push, back up remote source into a separate directory and check it for remote-only changes. Do not pull or clone into the local source/bundle directories. After pushing the reviewed bundle, update the existing web-app deployment using its ID and a new version; do not create a new deployment URL accidentally. Confirm command options against the installed clasp version.
 
-Publishing code does not run schema migrations. Run `upgradeSchedulerSchema()` once in the editor, or separately configure Apps Script API execution with a standard Google Cloud project, custom OAuth client, and API-executable deployment as described in https://github.com/google/clasp/blob/master/docs/run.md.
+Publishing code does not run schema migrations. Run `upgradeSchedulerSchema()` in the editor, retrying the same function if recovery is needed, or separately configure Apps Script API execution with a standard Google Cloud project, custom OAuth client, and API-executable deployment as described in https://github.com/google/clasp/blob/master/docs/run.md.
 
 Never commit `.clasp.json` with a real script ID, `.clasprc.json`, or downloaded OAuth client secrets. Login credentials stay on this machine and must not be pasted into chat.
 

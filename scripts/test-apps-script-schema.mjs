@@ -1,24 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-
-const configSource = readFileSync(
-  new URL('../apps-script/00_Config.gs', import.meta.url),
-  'utf8',
-);
-const validationSource = readFileSync(
-  new URL('../apps-script/04_Validation.gs', import.meta.url),
-  'utf8',
-);
-const setupSource = readFileSync(
-  new URL('../apps-script/07_Setup.gs', import.meta.url),
-  'utf8',
-);
-const preferencesSource = readFileSync(
-  new URL('../apps-script/08_Preferences.gs', import.meta.url),
-  'utf8',
-);
-const semestersSource = readFileSync(new URL('../apps-script/11_Semesters.gs', import.meta.url), 'utf8');
+import { readAppsScriptSource } from './apps-script-sources.mjs';
 
 const database = {
   Users: [
@@ -26,7 +8,15 @@ const database = {
     { user_id: 'USR-2', slug: 'two', role: 'user' },
   ],
   UserPreferences: [],
-  Semesters: [{ semester_id: 'SEM-1', title: 'Semester 1', start_date: '2026-09-01', weeks_count: '14', active: 'yes' }],
+  Semesters: [
+    {
+      semester_id: 'SEM-1',
+      title: 'Semester 1',
+      start_date: '2026-09-01',
+      weeks_count: '14',
+      active: 'yes',
+    },
+  ],
   Subjects: [],
   Offerings: [],
   Groups: [],
@@ -57,19 +47,25 @@ const context = {
 };
 
 vm.runInNewContext(
-  `${configSource}\n${preferencesSource}\n${validationSource}\n${setupSource}\n${semestersSource}\nglobalThis.schemaTestApi = { upgradeDatabaseSchema_, assertDatabaseIntegrity_ };`,
+  `${readAppsScriptSource()}\nglobalThis.schemaTestApi = { planSchemaMigration_, schedulerMigrationRegistry_, repairSchema002_, assertDatabaseIntegrity_ };`,
   context,
 );
 
-const first = context.schemaTestApi.upgradeDatabaseSchema_(database);
-assert.equal(first.previousSchemaVersion, '1');
-assert.equal(first.schemaVersion, '2');
-assert.equal(first.preferenceRowsAdded, 2);
-assert.deepEqual(Array.from(first.changedTables), [
+const first = context.schemaTestApi.planSchemaMigration_(
+  database,
+  context.schemaTestApi.schedulerMigrationRegistry_()[1],
+  [],
+  false,
+);
+assert.equal(first.fromVersion, 1);
+assert.equal(first.toVersion, 2);
+assert.equal(first.summary.preferenceRowsAdded, 2);
+assert.deepEqual(Object.keys(first.tables).sort(), [
+  'AuditLog',
   'Meta',
   'UserPreferences',
-  'AuditLog',
 ]);
+Object.assign(database, first.tables);
 assert.equal(
   database.Meta.find((row) => row.key === 'schema_version').value,
   '2',
@@ -78,7 +74,10 @@ assert.equal(
   database.Meta.find((row) => row.key === 'data_revision').value,
   '7',
 );
-assert.equal(database.Meta.find((row) => row.key === 'current_semester_id').value, 'SEM-1');
+assert.equal(
+  database.Meta.find((row) => row.key === 'current_semester_id').value,
+  'SEM-1',
+);
 assert.deepEqual(
   database.UserPreferences.map((row) => row.user_id),
   ['USR-1', 'USR-2'],
@@ -106,9 +105,17 @@ assert.throws(
     error.message.includes('UserPreferences has unknown user'),
 );
 
-const second = context.schemaTestApi.upgradeDatabaseSchema_(database);
-assert.equal(second.preferenceRowsAdded, 0);
-assert.deepEqual(Array.from(second.changedTables), []);
+const second = context.schemaTestApi.planSchemaMigration_(
+  database,
+  {
+    version: 2,
+    id: 'repair-schema-2',
+    apply: context.schemaTestApi.repairSchema002_,
+  },
+  [],
+  true,
+);
+assert.equal(second, null);
 assert.equal(database.AuditLog.length, 1);
 
 console.log('Apps Script schema migration tests passed');

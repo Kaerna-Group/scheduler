@@ -25,6 +25,7 @@ vi.mock('@/hooks/use-preferences', () => ({
 let backend: ReturnType<typeof createTestBackend>;
 beforeEach(() => {
   localStorage.clear();
+  sessionStorage.clear();
   backend = createTestBackend();
   vi.stubGlobal('fetch', vi.fn(backend.fetch));
   Object.defineProperty(navigator, 'onLine', {
@@ -134,6 +135,11 @@ describe('import diff → shared history → undo', () => {
       ).toBe(false),
     );
     expect(screen.getAllByText(/QA-APPLIED/).length).toBeGreaterThan(0);
+    expect(localStorage.getItem('scheduler_edit_token_v2:ermolz')).toBeNull();
+    act(() => storeEditToken('ermolz', ''));
+    expect((screen.getByRole('button', { name: 'Undo last import' }) as HTMLButtonElement).disabled).toBe(true);
+    act(() => storeEditToken('ermolz', backend.token));
+    expect((screen.getByRole('button', { name: 'Undo last import' }) as HTMLButtonElement).disabled).toBe(false);
     act(() => {
       Object.defineProperty(navigator, 'onLine', {
         configurable: true,

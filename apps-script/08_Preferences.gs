@@ -30,18 +30,6 @@ function createDefaultPreferenceRow_(userId) {
   };
 }
 
-function ensureUserPreferenceRows_(database) {
-  let added = 0;
-  const existing = new Set(database.UserPreferences.map(function (row) { return row.user_id; }));
-  database.Users.forEach(function (user) {
-    if (existing.has(user.user_id)) return;
-    database.UserPreferences.push(createDefaultPreferenceRow_(user.user_id));
-    existing.add(user.user_id);
-    added += 1;
-  });
-  return added;
-}
-
 function preferenceRowToPublic_(row) {
   return {
     version: 1,

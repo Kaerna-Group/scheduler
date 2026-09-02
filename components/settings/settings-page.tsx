@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { version as appVersion } from '@/package.json';
 import {
   ArrowLeft,
   Brush,
@@ -35,10 +36,11 @@ import { Switch } from '@/components/ui/switch';
 import { useSchedule } from '@/hooks/use-schedule';
 import { usePreferences } from '@/hooks/use-preferences';
 import { useTheme } from '@/hooks/use-theme';
+import { useEditToken } from '@/hooks/use-edit-token';
 import {
   clearScheduleCache,
   forgetAllEditTokens,
-  getStoredEditToken,
+  storeEditToken,
 } from '@/lib/schedule/repository';
 import { getScheduleSyncStatus } from '@/lib/schedule/sync-status';
 import { darkThemeIds, lightThemeIds, themeById, themes, type ThemeMode } from '@/lib/theme/theme-registry';
@@ -80,7 +82,8 @@ export function SettingsPage() {
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
   const [notice, setNotice] = useState('');
   const selectedUserName = schedule.users.find((user) => user.slug === selectedUser)?.displayName ?? schedule.user.displayName;
-  const hasToken = Boolean(getStoredEditToken(selectedUser));
+  const { token, storage: tokenStorage, issue: tokenIssue } = useEditToken(selectedUser);
+  const hasToken = Boolean(token);
   const preferencesStatus = syncStatus === 'saving'
     ? 'Saving…'
     : syncStatus === 'saved'
@@ -132,8 +135,8 @@ export function SettingsPage() {
 
   function executeConfirmedAction() {
     if (confirmAction === 'token') {
-      forgetAllEditTokens();
-      notify('Edit token removed');
+      const removed = forgetAllEditTokens();
+      notify(removed ? 'Edit tokens removed' : 'Browser blocked complete removal. Clear this site’s data in browser settings.');
     } else if (confirmAction === 'cache') {
       clearScheduleCache();
       notify('Schedule cache cleared');
@@ -158,7 +161,7 @@ export function SettingsPage() {
     : confirmAction === 'cache'
       ? ['Clear the cache?', 'The local schedule copy and user list will be removed. Remote data will not change.']
       : confirmAction === 'token'
-        ? ['Remove edit tokens?', 'All edit tokens saved on this device will be removed. Enter them again for the next import.']
+        ? ['Remove edit tokens?', 'All edit tokens in this tab and all remembered tokens on this device will be removed. Other tabs keep their own temporary tokens. Enter a token again to edit or synchronize.']
         : ['Reset preferences?', 'Appearance and view preferences will return to defaults. The schedule, cache, access, and tokens will remain.'];
 
   return (
@@ -221,15 +224,17 @@ export function SettingsPage() {
             </SettingsSection>
 
             <SettingsSection id="privacy" title="Data and privacy" icon={ShieldCheck}>
-              <SettingRow title="Personal edit token" description="The token itself is never displayed on this page."><span className={`rounded-full px-3 py-2 text-xs font-semibold ${hasToken ? 'bg-success-soft text-success-foreground' : 'bg-secondary text-muted-foreground'}`}>{hasToken ? 'Saved on device' : 'Not saved'}</span></SettingRow>
-              <SettingRow title="Remove edit tokens"><Button variant="outline" disabled={!hasToken} onClick={() => setConfirmAction('token')}><KeyRound />Remove</Button></SettingRow>
+              <SettingRow title="Personal edit token" description="The token itself is never displayed on this page."><span className={`rounded-full px-3 py-2 text-xs font-semibold ${hasToken ? 'bg-success-soft text-success-foreground' : 'bg-secondary text-muted-foreground'}`}>{tokenStorage === 'device' ? 'Saved on device' : tokenStorage === 'session' ? 'Until this tab closes' : tokenStorage === 'memory' ? 'Until this page reloads' : 'Not saved'}</span></SettingRow>
+              <SettingRow title="Remember edit token" description="Keep this user’s token on a trusted device. Turning this off removes the saved copy and keeps access only in this tab."><label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={tokenStorage === 'device'} disabled={!hasToken} onChange={(event) => storeEditToken(selectedUser, token, event.target.checked)} />Remember this edit token on this device</label></SettingRow>
+              {tokenIssue && <p role="alert" className="text-xs text-warning-foreground">{tokenIssue}</p>}
+              <SettingRow title="Remove edit tokens" description="Remove all users’ tokens in this tab and all remembered tokens on this device."><Button variant="outline" onClick={() => setConfirmAction('token')}><KeyRound />Remove</Button></SettingRow>
               <SettingRow title="Clear schedule cache" description="Remote data in Google Sheets is not removed."><Button variant="outline" onClick={() => setConfirmAction('cache')}><Database />Clear</Button></SettingRow>
               <SettingRow title="Lock now"><Button variant="outline" onClick={lockAccess}><LockKeyhole />Lock</Button></SettingRow>
               <SettingRow title="Forget this device" description="Removes all local preferences, tokens, cache, and PIN access."><Button variant="destructive" onClick={() => setConfirmAction('device')}><Trash2 />Forget</Button></SettingRow>
             </SettingsSection>
 
             <SettingsSection id="about" title="About" icon={Info}>
-              <SettingRow title="Version"><span className="font-mono text-xs text-muted-foreground">frontend 0.1.0 · preferences schema 1</span></SettingRow>
+              <SettingRow title="Version"><span className="font-mono text-xs text-muted-foreground">frontend {appVersion} · preferences schema 1</span></SettingRow>
               <SettingRow title="Semester"><span className="text-xs font-medium text-muted-foreground">{schedule.semester.title} · revision {schedule.revision}</span></SettingRow>
               <SettingRow title="Links"><div className="flex flex-wrap justify-end gap-2"><a className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-2 text-xs font-semibold hover:bg-muted" href="https://github.com/Kaerna-Group/scheduler" target="_blank" rel="noreferrer">GitHub <ExternalLink className="size-3.5" /></a><a className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-2 text-xs font-semibold hover:bg-muted" href="#/import">Import guide</a></div></SettingRow>
               <div className="rounded-[16px] bg-info-soft p-4 text-xs leading-6 text-info-foreground">Theme and view preferences synchronize through Google Sheets and are cached on this device for fast startup. PIN access and edit tokens remain local.</div>

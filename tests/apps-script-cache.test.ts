@@ -305,7 +305,9 @@ describe('cache invalidation follows committed state', () => {
         expect(backend.storage.writes).toEqual([]);
         expect(backend.snapshot()).toEqual(data);
       } else {
-        expect(backend.storage.events.at(-2)).toBe('flush');
+        const lastFlush = backend.storage.events.lastIndexOf('flush');
+        expect(lastFlush).toBeGreaterThan(0);
+        expect(backend.storage.events.slice(lastFlush + 1).some((event) => event.startsWith('write:'))).toBe(false);
         expect(backend.properties.has('SCHEDULER_CACHE_WRITE_PENDING')).toBe(
           false,
         );

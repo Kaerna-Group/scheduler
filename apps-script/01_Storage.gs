@@ -18,7 +18,8 @@ function ensureSheet_(spreadsheet, name, headers) {
   const currentHeaders = sheet.getLastColumn() > 0
     ? sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), headers.length)).getDisplayValues()[0]
     : [];
-  const headerMismatch = headers.some((header, index) => currentHeaders[index] !== header);
+  const headerMismatch = headers.some((header, index) => currentHeaders[index] !== header) ||
+    currentHeaders.slice(headers.length).some(function (header) { return header !== ''; });
   if (headerMismatch) {
     if (sheet.getLastRow() > 1) {
       throw schedulerError_('SCHEMA_MISMATCH', 'Sheet ' + name + ' has unexpected columns and contains data.');
@@ -115,7 +116,8 @@ function appendRecords_(name, records) {
   sheet.getRange(startRow, 1, values.length, headers.length).setValues(values);
 }
 
-function loadDatabase_(preloadedTables, providedSpreadsheet) {
+function loadDatabase_(preloadedTables, providedSpreadsheet, allowMigration) {
+  if (!allowMigration) assertSchemaMigrationIdle_();
   const database = {};
   Object.keys(SCHEDULER_SHEETS).forEach(function (name) {
     database[name] = preloadedTables && Object.prototype.hasOwnProperty.call(preloadedTables, name)
@@ -138,6 +140,8 @@ function setRevisionInDb_(database, revision) {
 
 function persistDatabase_(database, changedTables) {
   if (!changedTables.length) return;
+  assertSchemaMigrationIdle_();
+  databaseSchemaVersion_(database.Meta);
   // Sheets writes are not transactional. If a write fails halfway through,
   // never hide the partial state behind a previously valid cached revision.
   const properties = PropertiesService.getScriptProperties();
@@ -160,4 +164,20 @@ function persistDatabase_(database, changedTables) {
       } catch (ignored) { /* Keep bypassing cache if cleanup fails. */ }
     }
   }
+}
+
+function schemaTablesNeedingSetup_(spreadsheet) {
+  return Object.keys(SCHEDULER_SHEETS).filter(function (name) {
+    const sheet = spreadsheet.getSheetByName(name);
+    if (!sheet) return true;
+    const expected = SCHEDULER_SHEETS[name];
+    const width = Math.max(sheet.getLastColumn(), expected.length);
+    const headers = sheet.getLastColumn() ? sheet.getRange(1, 1, 1, width).getDisplayValues()[0] : [];
+    const mismatch = expected.some(function (header, index) { return headers[index] !== header; }) ||
+      headers.slice(expected.length).some(function (header) { return header !== ''; });
+    if (mismatch && sheet.getLastRow() > 1) {
+      throw schedulerError_('SCHEMA_MISMATCH', 'Sheet ' + name + ' has unexpected columns and contains data. Use an explicit column migration; no table headers were changed.');
+    }
+    return mismatch;
+  });
 }

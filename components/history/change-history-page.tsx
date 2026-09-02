@@ -13,7 +13,7 @@ import { useSchedule } from '@/hooks/use-schedule';
 import { describeScheduleChange } from '@/lib/history/describe-change';
 import { fetchScheduleHistory, readCachedHistory, undoLastImport } from '@/lib/history/repository';
 import type { ScheduleHistoryEvent, ScheduleHistoryResponse } from '@/lib/history/types';
-import { getStoredEditToken } from '@/lib/schedule/repository';
+import { useEditToken } from '@/hooks/use-edit-token';
 
 type ScopeFilter = 'all' | 'shared' | 'personal';
 
@@ -114,7 +114,7 @@ export function ChangeHistoryPage() {
     (scope === 'all' || event.scope === scope) && (subjectId === 'all' || event.subject?.id === subjectId),
   ), [history, scope, subjectId]);
   const selectedUserRole = schedule.users.find((user) => user.slug === selectedUser)?.role ?? schedule.user.role;
-  const editToken = getStoredEditToken(selectedUser);
+  const { token: editToken } = useEditToken(selectedUser);
   const canAdminister = selectedUserRole === 'editor' || selectedUserRole === 'admin';
   const canUndoTarget = selectedUserRole === 'admin' || history?.undo?.targetUserSlug === selectedUser;
 

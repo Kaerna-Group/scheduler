@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useNetworkStatus } from '@/hooks/use-network-status';
+import { useEditToken } from '@/hooks/use-edit-token';
 import { ApiError, hasRemoteApi } from '@/lib/api/client';
 import { readOnlineStatus } from '@/lib/network/connectivity';
 import {
@@ -21,14 +22,11 @@ import type {
   PreferencesSyncStatus,
   SchedulerPreferences,
 } from '@/lib/preferences/types';
-import {
-  EDIT_TOKEN_EVENT,
-  getStoredEditToken,
-} from '@/lib/schedule/repository';
 
 export function usePreferences() {
   const online = useNetworkStatus();
   const [userSlug, setUserSlug] = useState(getActivePreferencesUser);
+  const { token } = useEditToken(userSlug);
   const [record, setRecord] = useState<CachedPreferences>(() =>
     readPreferencesRecord(getActivePreferencesUser()),
   );
@@ -39,10 +37,8 @@ export function usePreferences() {
 
   useEffect(() => {
     const retry = () => setRetryTrigger((value) => value + 1);
-    window.addEventListener(EDIT_TOKEN_EVENT, retry);
     window.addEventListener('focus', retry);
     return () => {
-      window.removeEventListener(EDIT_TOKEN_EVENT, retry);
       window.removeEventListener('focus', retry);
     };
   }, []);
@@ -79,7 +75,6 @@ export function usePreferences() {
   useEffect(() => {
     const sequence = ++requestSequence.current;
     const patch = record.pendingPatch;
-    const token = getStoredEditToken(userSlug);
     if (!patch) {
       setSyncStatus(
         hasRemoteApi() && token && !record.migration ? 'saved' : 'local',
@@ -163,6 +158,7 @@ export function usePreferences() {
     record.preferencesRevision,
     retryTrigger,
     userSlug,
+    token,
   ]);
 
   const setPreferences = useCallback(

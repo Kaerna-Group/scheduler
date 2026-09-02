@@ -34,6 +34,7 @@ let downloads: Array<{ filename: string; href: string; attached: boolean }>;
 let revoke: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   localStorage.clear();
+  sessionStorage.clear();
   window.history.replaceState(null, '', '/scheduler/');
   backend = createTestBackend();
   vi.stubGlobal('fetch', vi.fn(backend.fetch));

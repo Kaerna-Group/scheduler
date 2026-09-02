@@ -20,14 +20,22 @@ import type {
 } from '@/lib/admin/types';
 import { readOnlineStatus } from '@/lib/network/connectivity';
 import { getStoredEditToken, storeEditToken } from '@/lib/schedule/repository';
+import {
+  getEditTokenRevision,
+  getEditTokenStorage,
+  getEditTokenStorageIssue,
+  subscribeEditTokens,
+} from '@/lib/auth/edit-tokens';
 
 function initialToken() {
   try {
-    return getStoredEditToken(
-      localStorage.getItem('scheduler_selected_user_v1') ?? '',
-    );
+    const slug = localStorage.getItem('scheduler_selected_user_v1') ?? '';
+    return {
+      token: getStoredEditToken(slug),
+      remember: getEditTokenStorage(slug) === 'device',
+    };
   } catch {
-    return '';
+    return { token: '', remember: false };
   }
 }
 
@@ -68,7 +76,7 @@ export function useAdmin() {
   const readSequence = useRef({ overview: 0, details: 0, audit: 0 });
   const writeBusy = useRef(false);
 
-  const logout = useCallback(() => {
+  const clearSession = useCallback(() => {
     session.current += 1;
     tokenRef.current = '';
     actorRef.current = null;
@@ -84,12 +92,37 @@ export function useAdmin() {
     setError('');
   }, []);
 
+  const logout = useCallback(() => {
+    const actor = actorRef.current;
+    const token = tokenRef.current;
+    clearSession();
+    if (actor && getStoredEditToken(actor.slug) === token) {
+      storeEditToken(actor.slug, '');
+      const issue = getEditTokenStorageIssue(actor.slug);
+      if (issue) setError(issue);
+    }
+  }, [clearSession]);
+
+  useEffect(
+    () =>
+      subscribeEditTokens(() => {
+        const actor = actorRef.current;
+        if (actor && getStoredEditToken(actor.slug) !== tokenRef.current) {
+          clearSession();
+          setError(
+            'Your edit token changed or was removed. Verify admin access again.',
+          );
+        }
+      }),
+    [clearSession],
+  );
+
   const report = useCallback(
     (failure: unknown) => {
-      if (
-        isApiCompatibilityError(failure) ||
-        (failure instanceof ApiError &&
-          ['UNAUTHORIZED', 'FORBIDDEN'].includes(failure.code))
+      if (isApiCompatibilityError(failure)) clearSession();
+      else if (
+        failure instanceof ApiError &&
+        ['UNAUTHORIZED', 'FORBIDDEN'].includes(failure.code)
       )
         logout();
       setError(adminErrorMessage(failure));
@@ -99,12 +132,12 @@ export function useAdmin() {
       )
         setBackendAvailable(false);
     },
-    [logout],
+    [clearSession, logout],
   );
 
   const authenticate = useCallback(
     async (token: string, remember = false) => {
-      logout();
+      clearSession();
       if (!hasRemoteApi() || !readOnlineStatus()) {
         setError(
           'An online backend is required. Admin data is not cached offline.',
@@ -112,23 +145,30 @@ export function useAdmin() {
         return;
       }
       const generation = session.current;
+      const tokenRevision = getEditTokenRevision();
       setLoading(true);
       try {
         const data = await getAdminOverview(token.trim());
         if (session.current !== generation) return;
+        if (getEditTokenRevision() !== tokenRevision) {
+          setError(
+            'Token storage changed while verifying access. Verify your token again.',
+          );
+          return;
+        }
         tokenRef.current = token.trim();
         actorRef.current = data.actor;
         setOverview(data);
         setLastVerifiedAt(new Date().toISOString());
         setBackendAvailable(true);
-        if (remember) storeEditToken(data.actor.slug, token.trim());
+        storeEditToken(data.actor.slug, token.trim(), remember);
       } catch (failure) {
         if (session.current === generation) report(failure);
       } finally {
         if (session.current === generation) setLoading(false);
       }
     },
-    [logout, report],
+    [clearSession, report],
   );
 
   const refresh = useCallback(async () => {
@@ -253,9 +293,14 @@ export function useAdmin() {
             return result;
           }
           if (userResult.editToken) {
-            if (getStoredEditToken(userResult.user.slug) === tokenRef.current)
-              storeEditToken(userResult.user.slug, userResult.editToken);
+            const remember =
+              getEditTokenStorage(userResult.user.slug) === 'device';
             tokenRef.current = userResult.editToken;
+            storeEditToken(
+              userResult.user.slug,
+              userResult.editToken,
+              remember,
+            );
           }
         }
         if (userResult.editToken && userResult.user)
@@ -277,8 +322,8 @@ export function useAdmin() {
   );
 
   useEffect(() => {
-    const token = initialToken();
-    if (token) void authenticate(token);
+    const { token, remember } = initialToken();
+    if (token) void authenticate(token, remember);
     return () => {
       session.current += 1;
       tokenRef.current = '';

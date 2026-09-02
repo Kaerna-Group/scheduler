@@ -2,7 +2,7 @@
   'use strict';
 
   const SCHEMA_VERSION_KEY = 'scheduler_storage_schema_version';
-  const CURRENT_SCHEMA_VERSION = 2;
+  const CURRENT_SCHEMA_VERSION = 3;
   const OLD_USER_SLUG = 'tymofii';
   const CURRENT_USER_SLUG = 'ermolz';
   const SELECTED_USER_KEY = 'scheduler_selected_user_v1';
@@ -124,14 +124,43 @@
     }
   }
 
+  function migrateToVersion3() {
+    // Old tokens were saved automatically, so their presence is not consent.
+    // Preserve access in this tab, but require a new explicit opt-in to persist.
+    const keys = [];
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (key && key.startsWith(EDIT_TOKEN_PREFIX)) keys.push(key);
+    }
+    keys.forEach(function (key) {
+      const currentKey =
+        'scheduler_edit_token_v2:' + key.slice(EDIT_TOKEN_PREFIX.length);
+      const value = localStorage.getItem(key);
+      if (
+        value &&
+        sessionStorage.getItem(currentKey) === null &&
+        localStorage.getItem(currentKey) === null
+      ) {
+        // Do not delete the only copy if tab storage is unavailable. Retry the
+        // migration on the next load; the application never reads legacy keys.
+        sessionStorage.setItem(currentKey, value);
+      }
+      localStorage.removeItem(key);
+    });
+  }
+
   try {
     const storedVersion = Number(localStorage.getItem(SCHEMA_VERSION_KEY) || 1);
-    if (
-      !Number.isInteger(storedVersion) ||
-      storedVersion < CURRENT_SCHEMA_VERSION
-    ) {
-      migrateToVersion2();
-      localStorage.setItem(SCHEMA_VERSION_KEY, String(CURRENT_SCHEMA_VERSION));
+    const version = Number.isInteger(storedVersion) ? storedVersion : 1;
+    const migrations = [
+      [2, migrateToVersion2],
+      [3, migrateToVersion3],
+    ];
+    for (const [target, migrate] of migrations) {
+      if (version < target && target <= CURRENT_SCHEMA_VERSION) {
+        migrate();
+        localStorage.setItem(SCHEMA_VERSION_KEY, String(target));
+      }
     }
   } catch {
     // The application remains usable when browser storage is unavailable.

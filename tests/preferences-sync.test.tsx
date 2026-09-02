@@ -45,6 +45,7 @@ async function advance(ms: number) {
 }
 beforeEach(() => {
   localStorage.clear();
+  sessionStorage.clear();
   vi.resetAllMocks();
   vi.useFakeTimers();
   network(true);
@@ -148,6 +149,19 @@ describe('pending preference synchronization', () => {
     expect(vi.mocked(updatePreferences).mock.calls[1][0].token).toBe(
       'replacement-token',
     );
+  });
+  it('stops queued synchronization when a temporary token is removed and resumes with its replacement', async () => {
+    const { result } = renderHook(usePreferences);
+    act(() => storeEditToken('ermolz', ''));
+    await advance(60000);
+    expect(updatePreferences).not.toHaveBeenCalled();
+    expect(result.current.syncStatus).toBe('pending');
+    expect(result.current.hasPendingChanges).toBe(true);
+    act(() => storeEditToken('ermolz', 'new-tab-token'));
+    await advance(600);
+    expect(updatePreferences).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(updatePreferences).mock.calls[0][0].token).toBe('new-tab-token');
+    expect(localStorage.getItem('scheduler_edit_token_v2:ermolz')).toBeNull();
   });
   it('cancels retries and ignores late conflict responses after switching users', async () => {
     let reject!: (error: unknown) => void;

@@ -30,11 +30,12 @@ const migrationSource = readFileSync(
 );
 
 function runMigrations() {
-  runInNewContext(migrationSource, { localStorage });
+  runInNewContext(migrationSource, { localStorage, sessionStorage });
 }
 
 beforeEach(() => {
   vi.stubGlobal('localStorage', new MemoryStorage());
+  vi.stubGlobal('sessionStorage', new MemoryStorage());
 });
 
 describe('local storage migrations', () => {
@@ -79,9 +80,9 @@ describe('local storage migrations', () => {
 
     runMigrations();
 
-    expect(localStorage.getItem('scheduler_storage_schema_version')).toBe('2');
+    expect(localStorage.getItem('scheduler_storage_schema_version')).toBe('3');
     expect(localStorage.getItem('scheduler_selected_user_v1')).toBe('ermolz');
-    expect(localStorage.getItem('scheduler_edit_token_v1:ermolz')).toBe(
+    expect(sessionStorage.getItem('scheduler_edit_token_v2:ermolz')).toBe(
       'secret',
     );
     expect(localStorage.getItem('scheduler_last_sync_v1:ermolz:fall')).toBe(
@@ -117,7 +118,7 @@ describe('local storage migrations', () => {
 
     runMigrations();
 
-    expect(localStorage.getItem('scheduler_edit_token_v1:ermolz')).toBe(
+    expect(sessionStorage.getItem('scheduler_edit_token_v2:ermolz')).toBe(
       'current-secret',
     );
     expect(localStorage.getItem('scheduler_preferences_v2:ermolz')).toBe(
@@ -134,5 +135,62 @@ describe('local storage migrations', () => {
     runMigrations();
 
     expect(localStorage.getItem('scheduler_selected_user_v1')).toBe('tymofii');
+  });
+
+  it('moves all legacy tokens to this tab, without overwriting newer tokens or touching preferences', () => {
+    localStorage.setItem('scheduler_storage_schema_version', '2');
+    for (const slug of ['admin', 'user', 'session'])
+      localStorage.setItem('scheduler_edit_token_v1:' + slug, 'old');
+    localStorage.setItem('scheduler_edit_token_v2:admin', 'consented');
+    sessionStorage.setItem('scheduler_edit_token_v2:session', 'new-session');
+    localStorage.setItem('scheduler_preferences_v2:user', 'preferences');
+    runMigrations();
+    expect(localStorage.getItem('scheduler_edit_token_v2:admin')).toBe(
+      'consented',
+    );
+    expect(sessionStorage.getItem('scheduler_edit_token_v2:admin')).toBeNull();
+    expect(sessionStorage.getItem('scheduler_edit_token_v2:user')).toBe('old');
+    expect(sessionStorage.getItem('scheduler_edit_token_v2:session')).toBe(
+      'new-session',
+    );
+    expect(localStorage.getItem('scheduler_preferences_v2:user')).toBe(
+      'preferences',
+    );
+    for (const slug of ['admin', 'user', 'session'])
+      expect(
+        localStorage.getItem('scheduler_edit_token_v1:' + slug),
+      ).toBeNull();
+    sessionStorage.clear();
+    runMigrations();
+    expect(sessionStorage.length).toBe(0);
+    expect(localStorage.getItem('scheduler_edit_token_v2:admin')).toBe(
+      'consented',
+    );
+  });
+
+  it('does not lose a legacy token on migration failure and retries safely', () => {
+    localStorage.setItem('scheduler_storage_schema_version', '2');
+    localStorage.setItem('scheduler_edit_token_v1:user', 'old');
+    const failure = vi
+      .spyOn(sessionStorage, 'setItem')
+      .mockImplementationOnce(() => {
+        throw new Error('Quota');
+      });
+    runMigrations();
+    expect(localStorage.getItem('scheduler_storage_schema_version')).toBe('2');
+    expect(localStorage.getItem('scheduler_edit_token_v1:user')).toBe('old');
+    failure.mockRestore();
+    runMigrations();
+    expect(localStorage.getItem('scheduler_storage_schema_version')).toBe('3');
+    expect(localStorage.getItem('scheduler_edit_token_v1:user')).toBeNull();
+    expect(sessionStorage.getItem('scheduler_edit_token_v2:user')).toBe('old');
+  });
+
+  it('does not downgrade a future storage schema', () => {
+    localStorage.setItem('scheduler_storage_schema_version', '99');
+    localStorage.setItem('scheduler_edit_token_v1:user', 'old');
+    runMigrations();
+    expect(localStorage.getItem('scheduler_storage_schema_version')).toBe('99');
+    expect(sessionStorage.length).toBe(0);
   });
 });

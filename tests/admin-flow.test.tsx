@@ -22,6 +22,7 @@ vi.mock('@/hooks/use-preferences', async () => {
 let backend: ReturnType<typeof createTestBackend>;
 beforeEach(() => {
   localStorage.clear();
+  sessionStorage.clear();
   backend = createTestBackend();
   vi.stubGlobal('fetch', vi.fn(backend.fetch));
   Object.defineProperty(navigator, 'onLine', {

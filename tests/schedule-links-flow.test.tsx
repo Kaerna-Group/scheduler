@@ -4,6 +4,7 @@ import {
   cleanup,
   fireEvent,
   render,
+  renderHook,
   screen,
   waitFor,
   within,
@@ -13,6 +14,7 @@ import { ScheduleApp } from '@/components/schedule/schedule-app';
 import { AppRouter } from '@/components/app-router';
 import { ACCESS_KEY, AccessGate } from '@/components/access/access-gate';
 import { navigateSchedule } from '@/hooks/use-app-location';
+import { useSchedule } from '@/hooks/use-schedule';
 import { createAdminUser } from '@/lib/admin/repository';
 import { createSemester } from '@/lib/semesters/repository';
 import {
@@ -38,6 +40,7 @@ let copy: ReturnType<typeof vi.fn>;
 let scroll: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   localStorage.clear();
+  sessionStorage.clear();
   window.history.replaceState(null, '', '/scheduler/');
   backend = createTestBackend();
   vi.stubGlobal('fetch', vi.fn(backend.fetch));
@@ -131,6 +134,28 @@ function savedPreferences(
 }
 
 describe('shareable schedule state', () => {
+  it('retains the latest linked profile when navigation removes URL selection', async () => {
+    await member();
+    const { result, rerender } = renderHook(
+      ({ userSlug }: { userSlug: string | undefined }) =>
+        useSchedule({ userSlug }),
+      { initialProps: { userSlug: 'ermolz' as string | undefined } },
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    rerender({ userSlug: 'linked-user' });
+    await waitFor(() =>
+      expect(result.current.schedule.user.slug).toBe('linked-user'),
+    );
+    expect(localStorage.getItem('scheduler_selected_user_v1')).toBe(
+      'linked-user',
+    );
+    rerender({ userSlug: undefined });
+    expect(result.current.selectedUser).toBe('linked-user');
+    expect(localStorage.getItem('scheduler_selected_user_v1')).toBe(
+      'linked-user',
+    );
+  });
+
   it('opens Scrum on week 6 ahead of local week/filter/view preferences and preserves it after refresh', async () => {
     localStorage.setItem('scheduler_selected_week_v1', '2');
     localStorage.setItem('scheduler_subject_filter_v1', '564966');

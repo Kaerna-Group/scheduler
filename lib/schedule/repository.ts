@@ -4,8 +4,7 @@ import type { ImportPlanResponse, ScheduleImportV1, ScheduleUser, SharedConflict
 
 const CACHE_PREFIX = 'scheduler_cache_v1:';
 const USERS_CACHE_KEY = 'scheduler_users_v1';
-const EDIT_TOKEN_PREFIX = 'scheduler_edit_token_v1:';
-export const EDIT_TOKEN_EVENT = 'scheduler-edit-token-changed';
+export { EDIT_TOKEN_EVENT, getStoredEditToken, storeEditToken, forgetAllEditTokens } from '@/lib/auth/edit-tokens';
 const LAST_SYNC_PREFIX = 'scheduler_last_sync_v1:';
 const HISTORY_CACHE_PREFIX = 'scheduler_history_v1:';
 
@@ -109,25 +108,6 @@ function writeCachedSchedule(schedule: UserSchedule) {
   }
 }
 
-export function getStoredEditToken(userSlug: string) {
-  try {
-    return localStorage.getItem(`${EDIT_TOKEN_PREFIX}${userSlug}`) ?? '';
-  } catch {
-    return '';
-  }
-}
-
-export function storeEditToken(userSlug: string, token: string) {
-  try {
-    const key = `${EDIT_TOKEN_PREFIX}${userSlug}`;
-    if (token) localStorage.setItem(key, token);
-    else localStorage.removeItem(key);
-  } catch {
-    // The token stays only in component state when storage is unavailable.
-  }
-  if (typeof window !== 'undefined') window.dispatchEvent(new Event(EDIT_TOKEN_EVENT));
-}
-
 export function readLastSync(userSlug: string, semesterId: string) {
   try { return localStorage.getItem(lastSyncKey(userSlug, semesterId)) ?? ''; } catch { return ''; }
 }
@@ -143,20 +123,6 @@ export function clearScheduleCache() {
   } catch {
     // Clearing cache is best effort when storage is restricted.
   }
-}
-
-export function forgetAllEditTokens() {
-  try {
-    const keys: string[] = [];
-    for (let index = 0; index < localStorage.length; index += 1) {
-      const key = localStorage.key(index);
-      if (key?.startsWith(EDIT_TOKEN_PREFIX)) keys.push(key);
-    }
-    keys.forEach((key) => localStorage.removeItem(key));
-  } catch {
-    // Tokens may already be inaccessible.
-  }
-  if (typeof window !== 'undefined') window.dispatchEvent(new Event(EDIT_TOKEN_EVENT));
 }
 
 export async function fetchScheduleUpdate(userSlug: string, semesterId?: string, signal?: AbortSignal) {

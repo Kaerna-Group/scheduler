@@ -1,7 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { readFileSync, readdirSync } from 'node:fs';
 import vm from 'node:vm';
-import { join } from 'node:path';
+import { readAppsScriptSource } from '../../scripts/apps-script-sources.mjs';
 
 type Database = Record<string, Array<Record<string, string>>>;
 interface BackendFunctions {
@@ -13,6 +12,8 @@ interface BackendFunctions {
     headers: string[],
   ) => unknown;
   setupScheduler: () => unknown;
+  upgradeSchedulerSchema: () => unknown;
+  schemaTablesNeedingSetup_: (spreadsheet: unknown) => string[];
   readTable_: (name: string) => Database[string];
   writeTable_: (name: string, records: Database[string]) => void;
   buildUserSchedule_: (userSlug: string, semesterId?: string) => unknown;
@@ -55,14 +56,12 @@ export function createTestBackend(
   options: {
     cache?: ReturnType<typeof createTestScriptCache>;
     spreadsheetId?: string;
+    transformSource?: (source: string) => string;
   } = {},
 ) {
-  const directory = join(process.cwd(), 'apps-script');
-  const source = readdirSync(directory)
-    .filter((name) => /^\d+_.*\.gs$/.test(name))
-    .sort()
-    .map((name) => readFileSync(join(directory, name), 'utf8'))
-    .join('\n');
+  const source = options.transformSource
+    ? options.transformSource(readAppsScriptSource())
+    : readAppsScriptSource();
   let locks = 0;
   const cache = options.cache ?? createTestScriptCache();
   const properties = new Map<string, string>();
@@ -72,7 +71,15 @@ export function createTestBackend(
     events: [] as string[],
     failReadFor: '',
     failWriteFor: '',
+    failWriteAfterClearFor: '',
+    failWriteAfterStoreFor: '',
     failFlush: false,
+    failFlushAt: 0,
+    flushCount: 0,
+    failPropertySetFor: '',
+    failPropertyDeleteFor: '',
+    failPropertyAfterSetFor: '',
+    propertyEvents: [] as string[],
   };
   const context = vm.createContext({
     console: { error() {} },
@@ -98,15 +105,32 @@ export function createTestBackend(
     PropertiesService: {
       getScriptProperties: () => ({
         getProperty: (key: string) => properties.get(key) ?? null,
-        setProperty: (key: string, value: string) => properties.set(key, value),
-        deleteProperty: (key: string) => properties.delete(key),
+        getKeys: () => [...properties.keys()],
+        setProperty: (key: string, value: string) => {
+          storage.propertyEvents.push('set:' + key);
+          if (storage.failPropertySetFor === key)
+            throw new Error('Properties quota');
+          if (Buffer.byteLength(value, 'utf8') > 9000)
+            throw new Error('Property exceeds byte quota');
+          properties.set(key, value);
+          if (storage.failPropertyAfterSetFor === key)
+            throw new Error('Property response lost');
+        },
+        deleteProperty: (key: string) => {
+          storage.propertyEvents.push('delete:' + key);
+          if (storage.failPropertyDeleteFor === key)
+            throw new Error('Properties delete failed');
+          properties.delete(key);
+        },
       }),
     },
     SpreadsheetApp: {
       flush() {
         if (locks !== 1) throw new Error('Flush outside LockService');
         storage.events.push('flush');
-        if (storage.failFlush) throw new Error('Spreadsheet flush failed');
+        storage.flushCount += 1;
+        if (storage.failFlush || storage.failFlushAt === storage.flushCount)
+          throw new Error('Spreadsheet flush failed');
       },
     },
     LockService: {
@@ -133,6 +157,7 @@ export function createTestBackend(
   const api = context as unknown as BackendFunctions;
   const token = 'isolated-test-admin-credential-never-valid-in-production';
   let data = structuredClone(api.createSeedDatabase_(token));
+  const tableNames = Object.keys(data);
   const calls: Array<{
     method: string;
     action: unknown;
@@ -148,12 +173,14 @@ export function createTestBackend(
     if (locks !== 1) throw new Error('Sheet setup outside LockService');
     if (!data[name]) data[name] = [];
   };
+  api.schemaTablesNeedingSetup_ = () =>
+    tableNames.filter((name) => !data[name]);
   api.readTable_ = (name) => {
     storage.reads.push(name);
     storage.events.push('read:' + name);
     if (storage.failReadFor === name)
       throw new Error('Spreadsheet read failed');
-    return structuredClone(data[name]);
+    return structuredClone(data[name] ?? []);
   };
   api.writeTable_ = (name, records) => {
     if (locks !== 1) throw new Error('Write outside LockService');
@@ -161,7 +188,13 @@ export function createTestBackend(
     storage.events.push('write:' + name);
     if (storage.failWriteFor === name)
       throw new Error('Spreadsheet write failed');
+    if (storage.failWriteAfterClearFor === name) {
+      data[name] = [];
+      throw new Error('Spreadsheet write failed after clearing rows');
+    }
     data[name] = structuredClone(records);
+    if (storage.failWriteAfterStoreFor === name)
+      throw new Error('Spreadsheet write response lost');
   };
   function postRaw(contents: string) {
     const result = api.doPost({ postData: { contents } });
@@ -209,6 +242,14 @@ export function createTestBackend(
       headers: { 'Content-Type': 'application/json' },
     });
   };
+  function checkedMigration(operation: () => unknown) {
+    let result: unknown;
+    let failure: { error: unknown } | undefined;
+    try { result = operation(); } catch (error) { failure = { error }; }
+    if (locks) throw new Error('Migration/setup leaked a lock');
+    if (failure) throw failure.error;
+    return result;
+  }
   return {
     token,
     fetch,
@@ -218,9 +259,10 @@ export function createTestBackend(
     storage,
     properties,
     setup: () => {
-      const result = api.setupScheduler();
-      if (locks) throw new Error('Setup leaked a lock');
-      return result;
+      return checkedMigration(() => api.setupScheduler());
+    },
+    upgrade: () => {
+      return checkedMigration(() => api.upgradeSchedulerSchema());
     },
     // Simulate direct spreadsheet edits/storage faults without any network I/O.
     replaceDatabase: (next: Database) => {
@@ -242,7 +284,15 @@ export function createTestBackend(
       storage.events.length = 0;
       storage.failReadFor = '';
       storage.failWriteFor = '';
+      storage.failWriteAfterClearFor = '';
+      storage.failWriteAfterStoreFor = '';
       storage.failFlush = false;
+      storage.failFlushAt = 0;
+      storage.flushCount = 0;
+      storage.failPropertySetFor = '';
+      storage.failPropertyDeleteFor = '';
+      storage.failPropertyAfterSetFor = '';
+      storage.propertyEvents.length = 0;
     },
   };
 }

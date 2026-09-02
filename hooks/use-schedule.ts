@@ -228,6 +228,15 @@ export function useSchedule(selection?: Selection) {
   }, [online, refresh]);
 
   useEffect(() => {
+    // Retain the latest URL-controlled selection when a hash change removes
+    // schedule parameters before the router unmounts this page. Otherwise this
+    // last render can persist the initial profile over the user's new choice.
+    setLocalSelection((previous) =>
+      previous.userSlug === selectedUser &&
+      previous.semesterId === requestedSemesterId
+        ? previous
+        : { userSlug: selectedUser, semesterId: requestedSemesterId },
+    );
     try {
       localStorage.setItem(USER_KEY, selectedUser);
       if (requestedSemesterId)

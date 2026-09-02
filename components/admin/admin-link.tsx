@@ -1,14 +1,11 @@
 import { ShieldCheck } from 'lucide-react';
-import { getStoredEditToken } from '@/lib/schedule/repository';
+import { useEditToken } from '@/hooks/use-edit-token';
 import type { ScheduleUser } from '@/lib/schedule/types';
 
 // Visibility is only a convenience. The admin page always authenticates on the server.
-export function canShowAdminLink(user?: ScheduleUser) {
-  return user?.role === 'admin' && Boolean(getStoredEditToken(user.slug));
-}
-
 export function AdminLink({ user }: { user?: ScheduleUser }) {
-  if (!canShowAdminLink(user)) return null;
+  const { token } = useEditToken(user?.slug ?? '');
+  if (user?.role !== 'admin' || !token) return null;
   return (
     <a
       href="#/admin"

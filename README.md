@@ -50,6 +50,15 @@ The unified check runs type checking, linting, tests, the production build, and 
 
 DOM integration tests also connect the real frontend repositories to the actual Apps Script API/auth/validation code, with spreadsheet persistence isolated in memory. They exercise user administration, enrollment editing, semesters, per-course import decisions and import undo without Google credentials or production writes. See the [verification report](docs/verification-2026-09-02.md) for coverage and remaining deployment checks.
 
+### Local E2E browser tests (not CI)
+
+```bash
+npm run test:e2e:install
+npm run test:e2e
+```
+
+The opt-in Playwright suite checks the built app in desktop/mobile Chromium and a separate real-service-worker PWA project. It uses isolated in-memory Apps Script data, never the working Google Sheets backend. Browser tests are **not** included in `npm test`, `npm run check`, or GitHub Actions. See [commands, scenarios, reports and isolation](e2e/README.md). `npm run test:e2e:ui` opens the interactive runner; `npm run test:e2e:report` opens the last report.
+
 ### Frontend ↔ Apps Script contract tests
 
 ```bash
@@ -179,9 +188,15 @@ Admins can create a semester in **Admin → System**, make any active semester c
 
 Writes are protected by personal edit tokens. The bundle contains only the public frontend; no shared secrets are included in Vite code.
 
+### Edit token lifetime
+
+Import, preferences synchronization, history undo and administration share one per-user token store. By default, a token lives in **sessionStorage for this tab**: it survives navigation and reloads, but not the end of the tab session. **Remember this edit token on this device** explicitly opts in to localStorage. Settings shows the actual lifetime and lets you change it or remove tokens. Unchecking removes the persistent copy while retaining access in the current tab. If browser storage is blocked, a memory-only fallback works until reload and the UI reports the limitation.
+
+Storage migration v3 moves previously auto-saved v1 tokens to this tab without treating their presence as consent. It never overwrites a newer token and removes the old persistent copy only after a successful transfer. New opt-in persistent tokens use v2 keys. Browser session restoration/duplicated tabs may restore or copy sessionStorage; on shared devices explicitly remove tokens or clear site data instead of relying on closing a window. This does not revoke the server token; rotation does. The PIN remains a local UI lock, not server authentication.
+
 ## Administration
 
-Open `#/admin` after the site PIN gate. The Admin link appears in Schedule, Import, and Settings only when the selected profile has role `admin` and an edit token is saved on this device. Direct navigation supports entering a token without saving it. Neither the PIN nor the selected profile authenticates an administrator: every admin read/write independently verifies an active user's token and server-side role.
+Open `#/admin` after the site PIN gate. The Admin link appears in Schedule, Import, and Settings only when the selected profile has role `admin` and an edit token is available in this tab or remembered on this device. Direct navigation supports entering a token without remembering it. Neither the PIN nor the selected profile authenticates an administrator: every admin read/write independently verifies an active user's token and server-side role.
 
 - **Overview:** authenticated actor, revisions, current semester, table statistics, recent audit and diagnostics.
 - **Users:** search/filter active and inactive users; create, rename, change roles, deactivate/reactivate and rotate tokens; view preferences and manage enrollments from the full semester catalog.
@@ -190,7 +205,7 @@ Open `#/admin` after the site PIN gate. The Admin link appears in Schedule, Impo
 
 Slugs and user IDs cannot be edited. Users are never deleted. Deactivation preserves schedule/preferences/history and revokes token access. Reactivation rotates the token by default, with an explicit option to retain it. The last active administrator cannot be demoted or deactivated. Role changes, token rotation, and activation changes require confirmation; self-demotion/deactivation closes the admin session.
 
-Created/rotated tokens are displayed once and must be stored securely. Other users' tokens, admin responses and drafts are never written to local storage or an offline queue. Saving your own token is opt-in; ending a session does not remove a previously saved own token (use **Settings → Data and privacy**). A saved own token is replaced after self-rotation. Server-rejected credentials clear private admin state; late responses from an old session are discarded.
+Created/rotated tokens are displayed once and must be stored securely. Other users' tokens, admin responses and drafts are never written to browser storage or an offline queue. Remembering your own token is opt-in; **End session and forget token** clears private admin data and removes your own token from this tab and device. Navigating away retains your own token for its chosen lifetime, but discards private admin responses. Self-rotation preserves that lifetime. Removing or replacing the shared token clears an open admin session; invalid credentials clear its own token as well. Late responses from an old session are discarded.
 
 Writes use a base revision and the backend lock. On `STALE_DATA`, close the dialog, refresh/reload the affected profile, review the preserved draft against the new snapshot and submit again. Neither conflicts nor uncertain network failures trigger automatic write retries. Reconnection refreshes reads only. Offline admin writes are disabled.
 
@@ -203,3 +218,5 @@ The admin API requires the updated Apps Script bundle (`12_Admin.gs`); publishin
 The `.github/workflows/deploy.yml` workflow tests and builds the site. The Apps Script URL is supplied through the `SCHEDULE_API_URL` repository variable.
 
 Backend setup is documented in [apps-script/README.md](apps-script/README.md).
+
+Backend schema updates use a consecutive migration registry with a durable recovery journal. `upgradeSchedulerSchema()` resumes interrupted steps without duplicating audit rows, refuses downgrades, and keeps API operations blocked until recovery completes. The current schema remains v2; manual course corrections do not run as schema migrations. See [migration steps, recovery and adding a version](apps-script/README.md#schema-migrations-and-recovery). Run `npm run test:migrations` for the isolated failure/retry tests; they also run in the unified CI check.

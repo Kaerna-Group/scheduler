@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { usePwa } from '@/components/pwa/pwa-provider';
 
-import { canShowAdminLink } from '@/components/admin/admin-link';
+import { useEditToken } from '@/hooks/use-edit-token';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -45,6 +45,7 @@ export function ScheduleActionsMenu({
   exportDisabled?: boolean;
 }) {
   const pwa = usePwa();
+  const { token } = useEditToken(user?.slug ?? '');
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -117,7 +118,7 @@ export function ScheduleActionsMenu({
             </DropdownMenuItem>
           </>
         )}
-        {canShowAdminLink(user) && (
+        {user?.role === 'admin' && token && (
           <>
             <DropdownMenuSeparator className="mx-2 my-1" />
             <DropdownMenuItem

@@ -30,6 +30,10 @@ import type {
   AdminUserDetails,
 } from '@/lib/admin/types';
 import { getStoredEditToken, storeEditToken } from '@/lib/schedule/repository';
+import {
+  forgetAllEditTokens,
+  getEditTokenStorage,
+} from '@/lib/auth/edit-tokens';
 
 vi.mock('@/hooks/use-preferences', async () => {
   const { defaultPreferences } = await import('@/lib/preferences/defaults');
@@ -160,6 +164,7 @@ function storedValues() {
 }
 beforeEach(() => {
   localStorage.clear();
+  sessionStorage.clear();
   vi.resetAllMocks();
   network(true);
   vi.mocked(getAdminOverview).mockResolvedValue(overview);
@@ -227,7 +232,8 @@ describe('admin session and safe mutations', () => {
       await result.current.authenticate('admin-token');
     });
     expect(result.current.overview?.actor.id).toBe('U1');
-    expect(getStoredEditToken('admin')).toBe('');
+    expect(getStoredEditToken('admin')).toBe('admin-token');
+    expect(getEditTokenStorage('admin')).toBe('session');
     expect(localStorage.length).toBe(1); // Only the pre-existing selected-profile key.
   });
 
@@ -246,6 +252,114 @@ describe('admin session and safe mutations', () => {
     expect(result.current.overview).toBeNull();
     expect(result.current.details).toBeNull();
     expect(result.current.audit).toBeNull();
+    expect(result.current.verifiedToken).toBe('');
+    expect(getStoredEditToken('admin')).toBe('');
+  });
+
+  it.each([false, true])(
+    'resumes a tab token across navigation and preserves remember=%s on self-rotation',
+    async (remember) => {
+      localStorage.setItem('scheduler_selected_user_v1', 'admin');
+      const first = renderHook(useAdmin);
+      await act(async () => {
+        await first.result.current.authenticate('first-token', remember);
+      });
+      first.unmount();
+      expect(getStoredEditToken('admin')).toBe('first-token');
+      const next = renderHook(useAdmin);
+      await waitFor(() =>
+        expect(next.result.current.overview?.actor.slug).toBe('admin'),
+      );
+      expect(getEditTokenStorage('admin')).toBe(
+        remember ? 'device' : 'session',
+      );
+      await act(async () => {
+        await next.result.current.mutate(async () => ({
+          revision: 11,
+          user: { ...actor, active: true },
+          editToken: 'rotated-token',
+        }));
+      });
+      expect(next.result.current.verifiedToken).toBe('rotated-token');
+      expect(getStoredEditToken('admin')).toBe('rotated-token');
+      expect(getEditTokenStorage('admin')).toBe(
+        remember ? 'device' : 'session',
+      );
+      expect(localStorage.getItem('scheduler_edit_token_v2:admin')).toBe(
+        remember ? 'rotated-token' : null,
+      );
+      act(() => next.result.current.logout());
+      expect(getStoredEditToken('admin')).toBe('');
+      expect(localStorage.getItem('scheduler_edit_token_v2:admin')).toBeNull();
+      expect(
+        sessionStorage.getItem('scheduler_edit_token_v2:admin'),
+      ).toBeNull();
+    },
+  );
+
+  it('revokes an open admin session when Settings forgets tokens, including late writes', async () => {
+    const { result } = renderHook(useAdmin);
+    await act(async () => {
+      await result.current.authenticate('admin-token');
+    });
+    const pending = deferred<{
+      revision: number;
+      user: typeof actor & { active: boolean };
+      editToken: string;
+    }>();
+    let mutation: Promise<unknown>;
+    act(() => {
+      mutation = result.current.mutate(() => pending.promise);
+    });
+    act(() => {
+      forgetAllEditTokens();
+    });
+    expect(result.current.overview).toBeNull();
+    expect(result.current.verifiedToken).toBe('');
+    await act(async () => {
+      pending.resolve({
+        revision: 11,
+        user: { ...actor, active: true },
+        editToken: 'late-token',
+      });
+      await mutation;
+    });
+    expect(getStoredEditToken('admin')).toBe('');
+    expect(result.current.credential).toBeNull();
+  });
+
+  it('does not restore credentials after tokens are forgotten during authentication', async () => {
+    const pending = deferred<AdminOverview>();
+    vi.mocked(getAdminOverview).mockReturnValueOnce(pending.promise);
+    const { result } = renderHook(useAdmin);
+    let authentication: Promise<void>;
+    act(() => {
+      authentication = result.current.authenticate('admin-token', true);
+    });
+    act(() => {
+      forgetAllEditTokens();
+    });
+    await act(async () => {
+      pending.resolve(overview);
+      await authentication;
+    });
+    expect(result.current.overview).toBeNull();
+    expect(getStoredEditToken('admin')).toBe('');
+  });
+
+  it('clears verified state when a remembered token changes in another tab', async () => {
+    const { result } = renderHook(useAdmin);
+    await act(async () => {
+      await result.current.authenticate('admin-token', true);
+    });
+    act(() => {
+      localStorage.setItem('scheduler_edit_token_v2:admin', 'replacement');
+      window.dispatchEvent(
+        new StorageEvent('storage', { key: 'scheduler_edit_token_v2:admin' }),
+      );
+    });
+    expect(result.current.overview).toBeNull();
+    expect(getStoredEditToken('admin')).toBe('replacement');
     expect(result.current.verifiedToken).toBe('');
   });
 
@@ -453,7 +567,9 @@ describe('admin interface', () => {
     ).toBeTruthy();
     expect(screen.getByText('Available at last check')).toBeTruthy();
     expect(screen.getByText('v1 · site supports v1')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'End session' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'End session and forget token' }),
+    );
     expect(
       screen.queryByRole('navigation', { name: 'Admin sections' }),
     ).toBeNull();

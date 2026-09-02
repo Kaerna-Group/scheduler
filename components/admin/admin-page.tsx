@@ -13,6 +13,7 @@ import { SemesterManagement } from '@/components/settings/semester-management';
 import { useAdmin } from '@/hooks/use-admin';
 import { usePreferences } from '@/hooks/use-preferences';
 import { useTheme } from '@/hooks/use-theme';
+import { useEditToken } from '@/hooks/use-edit-token';
 import { API_VERSION } from '@/lib/api/client';
 import { AuditEntries, AuditLog } from './audit-log';
 import { TokenDialog } from './user-dialogs';
@@ -35,6 +36,7 @@ export function AdminPage() {
   const [remember, setRemember] = useState(false);
   const [semesterNotice, setSemesterNotice] = useState('');
   const overview = admin.overview;
+  const { storage: tokenStorage, issue: tokenIssue } = useEditToken(overview?.actor.slug ?? '');
   const enabled = admin.online && !admin.saving && !admin.credential;
   return (
     <main className="min-h-screen bg-background pb-16 text-foreground">
@@ -52,6 +54,7 @@ export function AdminPage() {
               <span>
                 Authenticated: <strong>{overview.actor.displayName}</strong> (
                 {overview.actor.role}) · r{overview.revision}
+                {' · '}{tokenStorage === 'device' ? 'Token saved on device' : tokenStorage === 'memory' ? 'Token until page reload' : 'Token until tab closes'}
               </span>
               <Button
                 variant="outline"
@@ -67,7 +70,7 @@ export function AdminPage() {
                 disabled={admin.saving}
                 onClick={admin.logout}
               >
-                End session
+                End session and forget token
               </Button>
             </div>
           )}
@@ -101,6 +104,7 @@ export function AdminPage() {
             {admin.error}
           </p>
         )}
+        {tokenIssue && <p role="alert" className="mb-4 text-sm text-warning-foreground">{tokenIssue}</p>}
         {!overview ? (
           <section className="max-w-lg rounded-2xl border border-border bg-card p-5">
             <h2 className="text-lg font-semibold">Verify admin access</h2>
@@ -151,9 +155,10 @@ export function AdminPage() {
                 Remember my own token on this device
               </label>
               <p className="text-xs text-muted-foreground">
-                Optional local storage. Use only on a trusted device. Ending the
-                session clears admin data, but does not remove a previously
-                saved token; remove saved tokens in Settings.
+                Without this option, your token is available across pages only
+                until this tab closes. Remember it only on a trusted device.
+                Ending the session clears admin data and removes your own token
+                from this tab and this device.
               </p>
               <Button
                 type="submit"

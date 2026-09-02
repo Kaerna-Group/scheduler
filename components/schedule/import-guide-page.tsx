@@ -14,9 +14,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { ImportDiffEditor } from '@/components/schedule/import-diff-editor';
 import { useSchedule } from '@/hooks/use-schedule';
 import { usePreferences } from '@/hooks/use-preferences';
+import { useEditToken } from '@/hooks/use-edit-token';
 import { buildLlmImportPrompt, scheduleImportExample } from '@/lib/schedule/import-guide';
 import { exportSchedule, validateScheduleImport } from '@/lib/schedule/import';
-import { getStoredEditToken, importPersonalSchedule, storeEditToken } from '@/lib/schedule/repository';
+import { importPersonalSchedule, storeEditToken } from '@/lib/schedule/repository';
 import { getScheduleSyncStatus } from '@/lib/schedule/sync-status';
 import type { ImportPlanResponse, SharedConflictResolution } from '@/lib/schedule/types';
 
@@ -66,7 +67,9 @@ export function ImportGuidePage() {
   const exported = useMemo(() => exportSchedule(schedule), [schedule]);
   const prompt = useMemo(() => buildLlmImportPrompt(schedule.semester.id, schedule.semester.weeksCount), [schedule.semester.id, schedule.semester.weeksCount]);
   const semesterExample = useMemo(() => ({ ...scheduleImportExample, semesterId: schedule.semester.id }), [schedule.semester.id]);
-  const [token, setToken] = useState(() => getStoredEditToken(schedule.user.slug));
+  const { token, storage: tokenStorage, issue: tokenIssue } = useEditToken(schedule.user.slug);
+  const [rememberChoice, setRememberChoice] = useState<{ userSlug: string; value: boolean } | null>(null);
+  const remember = token ? tokenStorage === 'device' : rememberChoice?.userSlug === schedule.user.slug && rememberChoice.value;
   const [importText, setImportText] = useState(() => JSON.stringify(scheduleImportExample, null, 2));
   const [mode, setMode] = useState<'merge' | 'replace'>('merge');
   const [sharedConflictResolutions, setSharedConflictResolutions] = useState<Record<string, SharedConflictResolution>>({});
@@ -108,11 +111,10 @@ export function ImportGuidePage() {
 
   useEffect(() => {
     operationSequence.current += 1;
-    setToken(getStoredEditToken(schedule.user.slug));
     setPreview(null);
     setSharedConflictResolutions({});
     setBusy(false);
-  }, [schedule.revision, schedule.user.slug, schedule.semester.id]);
+  }, [schedule.revision, schedule.user.slug, schedule.semester.id, token]);
 
   useEffect(() => {
     setImportText(JSON.stringify(semesterExample, null, 2));
@@ -121,11 +123,6 @@ export function ImportGuidePage() {
     setErrors([]);
     setMessage('');
   }, [semesterExample]);
-
-  const rememberToken = (value: string) => {
-    setToken(value);
-    storeEditToken(schedule.user.slug, value.trim());
-  };
 
   const parseImport = () => {
     setMessage('');
@@ -275,8 +272,8 @@ export function ImportGuidePage() {
         </div>
 
         {archived && <div className="mt-6 rounded-[16px] border border-border bg-secondary p-4 text-sm text-muted-foreground">Archived semester — read-only. Existing data can be viewed and exported, but not imported or changed.</div>}
-        <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1.45fr)_minmax(330px,.75fr)] xl:gap-8">
-          <section className="rounded-[26px] border border-border bg-card/80 p-4 shadow-[0_16px_55px_rgb(var(--theme-shadow-color)/6%)] sm:p-6 xl:p-7">
+        <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.45fr)_minmax(330px,.75fr)] xl:gap-8">
+          <section className="min-w-0 rounded-[26px] border border-border bg-card/80 p-4 shadow-[0_16px_55px_rgb(var(--theme-shadow-color)/6%)] sm:p-6 xl:p-7">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div><h2 className="text-xl font-semibold tracking-[-0.035em] text-foreground">Import JSON</h2><p className="mt-1 text-xs text-muted-foreground">User: {schedule.user.displayName}</p></div>
               <div className="flex flex-wrap gap-2">
@@ -290,9 +287,20 @@ export function ImportGuidePage() {
               Personal edit token
               <div className="relative mt-2">
                 <KeyRound className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input id="schedule-edit-token" type="password" autoComplete="off" value={token} onChange={(event) => rememberToken(event.target.value)} placeholder="Stored only on this device" className="h-11 rounded-[14px] pl-10" />
+                <Input id="schedule-edit-token" type="password" autoComplete="off" value={token} onChange={(event) => storeEditToken(schedule.user.slug, event.target.value, Boolean(remember))} placeholder="Available until this tab is closed" className="h-11 rounded-[14px] pl-10" />
               </div>
             </label>
+            <label className="mt-3 flex items-center gap-2 text-xs text-foreground">
+              <input type="checkbox" checked={Boolean(remember)} onChange={(event) => {
+                const value = event.target.checked;
+                setRememberChoice({ userSlug: schedule.user.slug, value });
+                storeEditToken(schedule.user.slug, token, value);
+              }} />
+              Remember this edit token on this device
+            </label>
+            <p className="mt-2 text-xs leading-5 text-muted-foreground">Without this option, the token is shared across pages only in this tab and is removed when the tab closes. Enable it only on a trusted device.</p>
+            {tokenStorage === 'memory' && <p className="mt-2 text-xs text-warning-foreground">Tab storage is unavailable. Reloading this page will remove the token.</p>}
+            {tokenIssue && <p role="alert" className="mt-2 text-xs text-warning-foreground">{tokenIssue}</p>}
 
             <div className="mt-4 grid gap-2 sm:grid-cols-2">
               <button onClick={() => changeMode('merge')} className={`rounded-[15px] border p-3 text-left transition ${mode === 'merge' ? 'border-ring bg-warning-soft' : 'border-border bg-background'}`}><div className="text-xs font-bold text-foreground">Merge</div><div className="mt-1 text-[11px] leading-5 text-muted-foreground">Add or update the listed courses without removing others.</div></button>

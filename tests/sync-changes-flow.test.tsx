@@ -35,6 +35,7 @@ let backend: ReturnType<typeof createTestBackend>;
 const semester = 'SEM-2026-FALL';
 beforeEach(() => {
   localStorage.clear();
+  sessionStorage.clear();
   window.history.replaceState(null, '', '/scheduler/');
   Object.defineProperty(navigator, 'onLine', {
     configurable: true,

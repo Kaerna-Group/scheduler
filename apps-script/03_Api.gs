@@ -1,5 +1,6 @@
 function doGet(event) {
   return apiBoundary_(function () {
+    assertSchemaMigrationIdle_();
     const parameters = event && event.parameter ? event.parameter : {};
     const action = parameters.action || 'health';
     if (action === 'health') {
@@ -41,6 +42,7 @@ function doPost(event) {
       throw schedulerError_('INVALID_JSON', 'Request body must be a JSON object.');
     }
     assertApiVersion_(body.apiVersion);
+    assertSchemaMigrationIdle_();
     if (body.action === 'previewImport') return importPersonalSchedule_(body, true);
     if (body.action === 'importSchedule') return importPersonalSchedule_(body, false);
     if (body.action === 'updateEnrollments') return updateEnrollments_(body);
