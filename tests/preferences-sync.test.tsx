@@ -108,6 +108,29 @@ describe('pending preference synchronization', () => {
       vi.mocked(updatePreferences).mock.calls[1][0].baseSettingsRevision,
     ).toBe(9);
   });
+  it.each([
+    'API_VERSION_MISSING',
+    'API_VERSION_MISMATCH',
+    'INVALID_API_RESPONSE',
+  ])(
+    'preserves pending preferences and does not automatically retry %s',
+    async (code) => {
+      vi.mocked(updatePreferences).mockRejectedValueOnce(
+        new ApiError({
+          ok: false,
+          error: { code, message: 'Update the backend or frontend' },
+        }),
+      );
+      const { result } = renderHook(usePreferences);
+      await advance(600);
+      await advance(60000);
+      expect(updatePreferences).toHaveBeenCalledTimes(1);
+      expect(result.current.syncStatus).toBe('error');
+      expect(result.current.hasPendingChanges).toBe(true);
+      expect(readPreferencesRecord('ermolz').pendingPatch).toBeDefined();
+    },
+  );
+
   it('does not retry revoked credentials but resumes after a token replacement', async () => {
     vi.mocked(updatePreferences).mockRejectedValueOnce(
       new ApiError({

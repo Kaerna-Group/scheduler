@@ -1,4 +1,10 @@
 function setupScheduler() {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(SCHEDULER_CONFIG.lockTimeoutMs);
+  try { return setupSchedulerLocked_(); } finally { lock.releaseLock(); }
+}
+
+function setupSchedulerLocked_() {
   const spreadsheet = getSchedulerSpreadsheet_();
   Object.keys(SCHEDULER_SHEETS).forEach(function (name) {
     ensureSheet_(spreadsheet, name, SCHEDULER_SHEETS[name]);
@@ -22,7 +28,7 @@ function setupScheduler() {
 
   const token = generateEditToken_();
   const seeded = createSeedDatabase_(token);
-  Object.keys(SCHEDULER_SHEETS).forEach(function (name) { writeTable_(name, seeded[name]); });
+  persistDatabase_(seeded, Object.keys(SCHEDULER_SHEETS));
   return {
     spreadsheetId: spreadsheet.getId(),
     seeded: true,

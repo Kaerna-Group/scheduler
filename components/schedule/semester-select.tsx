@@ -16,12 +16,12 @@ export function SemesterSelect({ schedule, value, onChange, className = '' }: {
   className?: string;
 }) {
   const semesters = availableSemesters(schedule);
-  const selected = semesters.find((semester) => semester.id === value) ?? semesters[0];
+  const selected = semesters.find((semester) => semester.id === value);
   return (
-    <Select value={selected?.id} onValueChange={(semesterId) => semesterId && onChange(semesterId)}>
+    <Select value={value} onValueChange={(semesterId) => semesterId && onChange(semesterId)}>
       <SelectTrigger aria-label="Semester" className={`h-10 min-w-[190px] rounded-full border-border bg-card/80 px-3.5 text-xs font-semibold shadow-none ${className}`}>
         <CalendarRange className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 flex-1 truncate text-left">{selected?.title ?? schedule.semester.title}</span>
+        <span className="min-w-0 flex-1 truncate text-left">{selected?.title ?? value ?? schedule.semester.title}</span>
         {selected?.archived && <span className="text-[9px] uppercase text-muted-foreground">Archive</span>}
       </SelectTrigger>
       <SelectContent className="min-w-[280px]">

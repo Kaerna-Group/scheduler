@@ -1,4 +1,10 @@
 const SCHEDULER_CONFIG = Object.freeze({
+  apiVersion: 1,
+  scheduleCacheVersion: 1,
+  scheduleCacheTtlSeconds: 300,
+  scheduleCacheMaxBytes: 90000,
+  cacheWritePendingProperty: 'SCHEDULER_CACHE_WRITE_PENDING',
+  cacheRecoveryEpochProperty: 'SCHEDULER_CACHE_RECOVERY_EPOCH',
   spreadsheetProperty: 'SCHEDULER_SPREADSHEET_ID',
   schemaVersion: '2',
   revisionKey: 'data_revision',

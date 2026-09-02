@@ -36,8 +36,8 @@ function ensureSheet_(spreadsheet, name, headers) {
   return sheet;
 }
 
-function readTable_(name) {
-  const spreadsheet = getSchedulerSpreadsheet_();
+function readTable_(name, providedSpreadsheet) {
+  const spreadsheet = providedSpreadsheet || getSchedulerSpreadsheet_();
   const headers = SCHEDULER_SHEETS[name];
   if (!headers) throw schedulerError_('UNKNOWN_TABLE', 'Unknown sheet: ' + name);
   const sheet = spreadsheet.getSheetByName(name);
@@ -115,10 +115,12 @@ function appendRecords_(name, records) {
   sheet.getRange(startRow, 1, values.length, headers.length).setValues(values);
 }
 
-function loadDatabase_() {
+function loadDatabase_(preloadedTables, providedSpreadsheet) {
   const database = {};
   Object.keys(SCHEDULER_SHEETS).forEach(function (name) {
-    database[name] = readTable_(name);
+    database[name] = preloadedTables && Object.prototype.hasOwnProperty.call(preloadedTables, name)
+      ? preloadedTables[name]
+      : readTable_(name, providedSpreadsheet);
   });
   return database;
 }
@@ -135,5 +137,27 @@ function setRevisionInDb_(database, revision) {
 }
 
 function persistDatabase_(database, changedTables) {
-  changedTables.forEach(function (name) { writeTable_(name, database[name]); });
+  if (!changedTables.length) return;
+  // Sheets writes are not transactional. If a write fails halfway through,
+  // never hide the partial state behind a previously valid cached revision.
+  const properties = PropertiesService.getScriptProperties();
+  const recoveringWrite = properties.getProperty(SCHEDULER_CONFIG.cacheWritePendingProperty);
+  properties.setProperty(SCHEDULER_CONFIG.cacheWritePendingProperty, 'yes');
+  let allWritten = false;
+  try {
+    changedTables.forEach(function (name) { writeTable_(name, database[name]); });
+    allWritten = true;
+  } finally {
+    // Commit buffered writes before the caller releases its script lock, so a
+    // subsequent cached GET cannot observe a revision ahead of its tables.
+    SpreadsheetApp.flush();
+    if (allWritten) {
+      try {
+        // A previous partial write may not have advanced data_revision. Do not
+        // resurrect its old entries when a later successful write clears bypass.
+        if (recoveringWrite) properties.setProperty(SCHEDULER_CONFIG.cacheRecoveryEpochProperty, newId_('CACHE'));
+        properties.deleteProperty(SCHEDULER_CONFIG.cacheWritePendingProperty);
+      } catch (ignored) { /* Keep bypassing cache if cleanup fails. */ }
+    }
+  }
 }

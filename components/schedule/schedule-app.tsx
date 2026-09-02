@@ -3,26 +3,29 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle, ArrowLeft, ArrowRight, BookOpenText, CalendarDays,
-  Clock3, CloudOff, FileJson2, History, Laptop, MapPin, Radio, RefreshCw, Settings2, Sparkles, UserRound,
+  Clock3, CloudOff, Laptop, MapPin, Radio, RefreshCw, Sparkles, UserRound,
 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
-import { AdminLink } from '@/components/admin/admin-link';
+import { ScheduleActionsMenu } from '@/components/schedule/schedule-actions-menu';
 import { SemesterSelect } from '@/components/schedule/semester-select';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { useSchedule } from '@/hooks/use-schedule';
+import { useAppLocation } from '@/hooks/use-app-location';
+import { useScheduleView } from '@/hooks/use-schedule-view';
 import { usePreferences } from '@/hooks/use-preferences';
 import { useTheme } from '@/hooks/use-theme';
 import { getScheduleSyncStatus } from '@/lib/schedule/sync-status';
+import { parseScheduleLocation } from '@/lib/schedule/location';
 import type { Lesson, Subject, WeekDay } from '@/lib/schedule/types';
 import {
   dayLabels, dayLabelsShort, dayOrder, getConflictIds, getCurrentWeekDay,
-  getLessonsForDay, getSemesterWeek, getWeekDates,
+  getLessonsForDay, getWeekDates,
 } from '@/lib/schedule/utils';
 import { cn } from '@/lib/utils';
-
-type ViewMode = 'week' | 'today' | 'subjects';
 
 const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -133,46 +136,31 @@ function SubjectCatalog({ subjects, lessons }: { subjects: Subject[]; lessons: L
 }
 
 export function ScheduleApp() {
+  const href = useAppLocation();
+  const route = useMemo(() => parseScheduleLocation(href), [href]);
   const { preferences, hasPendingChanges } = usePreferences();
   useTheme(preferences.appearance);
   const {
-    schedule, selectedUser, selectUser, selectedSemesterId, selectSemester, source, loading, error,
+    schedule, selectedUser, selectedSemesterId, source, loading, error, selectionReady,
     refresh, remoteConfigured, lastSync, online,
-  } = useSchedule();
+  } = useSchedule({ userSlug: route?.user, semesterId: route?.semester, fromLink: route?.explicit });
   const { lessons, subjects, semester } = schedule;
-  const currentWeek = getSemesterWeek(semester.startDate, semester.weeksCount);
   const currentDay = getCurrentWeekDay();
-  const [week, setWeek] = useState(() => {
+  const { week, view, subjectId, chooseWeek, setView, setSubjectId, selectUser, selectSemester, link, notice, missingSubject, canShare } = useScheduleView({
+    href, route, schedule, selectedUser, selectedSemesterId, selectionReady, loading, error, preferences,
+  });
+  const [copyNotice, setCopyNotice] = useState('');
+  const [manualCopyUrl, setManualCopyUrl] = useState('');
+  useEffect(() => { setCopyNotice(''); }, [href]);
+  async function copyLink() {
     try {
-      const stored = Number(localStorage.getItem('scheduler_selected_week_v1'));
-      return preferences.schedule.initialWeek === 'last-opened' && Number.isInteger(stored) && stored >= 1 && stored <= semester.weeksCount ? stored : currentWeek;
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
+      await navigator.clipboard.writeText(link);
+      setCopyNotice('Link copied');
     } catch {
-      return currentWeek;
+      setManualCopyUrl(link);
     }
-  });
-  const [view, setView] = useState<ViewMode>(preferences.schedule.defaultView);
-  const [subjectId, setSubjectIdState] = useState(() => {
-    if (!preferences.schedule.rememberSubjectFilter) return 'all';
-    try { return localStorage.getItem('scheduler_subject_filter_v1') ?? 'all'; } catch { return 'all'; }
-  });
-
-  const setSubjectId = (value: string) => {
-    setSubjectIdState(value);
-    try {
-      if (preferences.schedule.rememberSubjectFilter) localStorage.setItem('scheduler_subject_filter_v1', value);
-      else localStorage.removeItem('scheduler_subject_filter_v1');
-    } catch { /* preference only */ }
-  };
-
-  const chooseWeek = (value: number) => {
-    setWeek(value);
-    try { localStorage.setItem('scheduler_selected_week_v1', String(value)); } catch { /* preference only */ }
-  };
-
-  useEffect(() => {
-    setWeek(getSemesterWeek(semester.startDate, semester.weeksCount));
-    setSubjectIdState('all');
-  }, [semester.id, semester.startDate, semester.weeksCount]);
+  }
 
   const dates = useMemo(() => getWeekDates(semester.startDate, week), [semester.startDate, week]);
   const conflictIds = useMemo(() => preferences.schedule.highlightConflicts ? getConflictIds(lessons, week) : new Set<string>(), [lessons, week, preferences.schedule.highlightConflicts]);
@@ -181,7 +169,8 @@ export function ScheduleApp() {
   const selectedUserName = schedule.users.find((user) => user.slug === selectedUser)?.displayName ?? schedule.user.displayName;
   const selectedSubjectName = subjectId === 'all'
     ? 'All courses'
-    : (subjects.find((subject) => subject.id === subjectId)?.shortName ?? 'All courses');
+    : (subjects.find((subject) => subject.id === subjectId)?.shortName ?? (loading ? 'Loading course…' : 'Course not found'));
+  const filteredSubjects = subjectId === 'all' ? subjects : subjects.filter((subject) => subject.id === subjectId);
   const visibleDays = view === 'today' ? (currentDay ? [currentDay] : []) : dayOrder.filter((day) => day !== 'saturday' || preferences.schedule.showSaturday || activeLessons.some((lesson) => lesson.day === 'saturday'));
   const visibleLessonCount = view === 'today' && currentDay
     ? activeLessons.filter((lesson) => lesson.day === currentDay).length
@@ -196,7 +185,6 @@ export function ScheduleApp() {
   });
 
   const goToToday = () => {
-    chooseWeek(currentWeek);
     setView('today');
   };
 
@@ -208,27 +196,26 @@ export function ScheduleApp() {
       </div>
 
       <header className="relative border-b border-border/80 bg-background/85 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-[1360px] flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-7 lg:px-10 xl:py-5">
-          <div className="flex items-center gap-3">
-            <div className="grid size-10 place-items-center rounded-[14px] bg-primary text-primary-foreground shadow-sm"><CalendarDays className="size-[19px]" strokeWidth={1.8} /></div>
-            <div>
+        <div className="mx-auto grid max-w-[1360px] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2.5 px-4 py-3 sm:px-7 md:grid-cols-[auto_minmax(0,1fr)_auto] lg:px-10 xl:gap-x-8">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="grid size-10 shrink-0 place-items-center rounded-[14px] bg-primary text-primary-foreground shadow-sm"><CalendarDays className="size-[19px]" strokeWidth={1.8} /></div>
+            <div className="min-w-0">
               <div className="text-[15px] font-bold tracking-[-0.02em] text-foreground">My Schedule</div>
-              <div className="text-[11px] font-medium text-muted-foreground">{semester.title}</div>
+              <div className="truncate text-[11px] font-medium text-muted-foreground">{semester.title}</div>
             </div>
           </div>
 
-          <div className="order-3 flex flex-1 flex-wrap gap-2 sm:order-none sm:flex-initial">
-          <SemesterSelect schedule={schedule} value={selectedSemesterId} onChange={selectSemester} className="flex-1 sm:max-w-[230px]" />
+          <div className="order-3 col-span-2 grid min-w-0 grid-cols-2 gap-2 md:order-none md:col-span-1 md:mx-auto md:w-full md:max-w-[420px]">
+          <SemesterSelect schedule={schedule} value={selectedSemesterId} onChange={selectSemester} className="w-full min-w-0 data-[size=default]:h-10" />
           <Select
             value={selectedUser}
             onValueChange={(value) => {
               if (value) {
-                setSubjectId('all');
                 selectUser(value);
               }}
             }
           >
-            <SelectTrigger aria-label="Schedule user" className="order-3 h-10 min-w-[170px] flex-1 rounded-full border-border bg-card/80 px-3.5 text-xs font-semibold text-foreground shadow-none sm:order-none sm:max-w-[220px] xl:h-11 xl:max-w-[240px] xl:text-sm">
+            <SelectTrigger aria-label="Schedule user" className="w-full min-w-0 rounded-full border-border bg-card/80 px-3.5 text-xs font-semibold text-foreground shadow-none data-[size=default]:h-10">
               <UserRound className="size-3.5 shrink-0 text-muted-foreground" />
               <span className="min-w-0 flex-1 truncate text-left">{selectedUserName}</span>
             </SelectTrigger>
@@ -238,28 +225,17 @@ export function ScheduleApp() {
           </Select>
           </div>
 
-          <nav className="hidden items-center rounded-full border border-border bg-card/70 p-1 md:flex" aria-label="Schedule view">
+          <div className="flex items-center gap-1.5">
+          <nav className="hidden items-center rounded-full bg-secondary/70 p-1 md:flex" aria-label="Schedule view">
             {([['today', 'Today'], ['week', 'Week'], ['subjects', 'Courses']] as const).map(([value, label]) => (
-              <button key={value} onClick={() => setView(value)} className={cn(
-                'rounded-full px-4 py-2 text-xs font-semibold transition xl:px-5 xl:py-2.5 xl:text-sm',
+              <button key={value} aria-pressed={view === value} onClick={() => value === 'today' ? goToToday() : setView(value)} className={cn(
+                'min-h-9 rounded-full px-3 py-2 text-xs font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring xl:px-4',
                 view === value ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
               )}>{label}</button>
             ))}
           </nav>
 
-          <div className="flex items-center gap-2">
-            <AdminLink user={schedule.users.find((user) => user.slug === selectedUser)} />
-            <a href="#/import" className="inline-flex h-10 items-center justify-center gap-1.5 rounded-full border border-border bg-card/80 px-3.5 text-xs font-semibold text-foreground transition hover:bg-card xl:h-11 xl:px-4 xl:text-sm">
-              <FileJson2 className="size-3.5" />
-              <span className="hidden sm:inline">Import</span>
-            </a>
-            <a href="#/changes" className="inline-flex size-10 items-center justify-center rounded-full border border-border bg-card/80 text-foreground transition hover:bg-card xl:h-11 xl:w-auto xl:gap-1.5 xl:px-4 xl:text-sm xl:font-semibold"><History className="size-4" /><span className="hidden xl:inline">Changes</span></a>
-            <a href="#/settings" className="inline-flex size-10 items-center justify-center rounded-full border border-border bg-card/80 text-foreground transition hover:bg-card xl:h-11 xl:w-auto xl:gap-1.5 xl:px-4 xl:text-sm xl:font-semibold"><Settings2 className="size-4" /><span className="hidden xl:inline">Settings</span></a>
-            <Button variant="outline" onClick={goToToday} className="h-10 rounded-full border-border bg-card/80 px-4 text-xs font-semibold text-foreground shadow-none hover:bg-card xl:h-11 xl:px-5 xl:text-sm">
-              <Sparkles className="size-3.5 text-accent" />
-              <span className="hidden xl:inline">Go to today</span>
-              <span className="xl:hidden">Today</span>
-            </Button>
+            <ScheduleActionsMenu user={schedule.users.find((user) => user.slug === selectedUser)} onCopyLink={() => void copyLink()} copyDisabled={!canShare} />
           </div>
         </div>
       </header>
@@ -290,7 +266,7 @@ export function ScheduleApp() {
 
           <div className="mt-5 grid grid-cols-7 gap-1.5 sm:gap-2">
             {Array.from({ length: semester.weeksCount }, (_, index) => index + 1).map((value) => (
-              <button key={value} aria-label={`Week ${value}`} aria-current={week === value ? 'true' : undefined} onClick={() => { chooseWeek(value); if (view === 'today') setView('week'); }} className={cn(
+              <button key={value} aria-label={`Week ${value}`} aria-current={week === value ? 'true' : undefined} onClick={() => chooseWeek(value)} className={cn(
                 'h-9 rounded-[12px] text-xs font-semibold transition sm:h-10',
                 week === value ? 'bg-accent text-accent-foreground shadow-[0_6px_16px_rgb(var(--theme-shadow-color)/18%)]' : 'bg-secondary text-muted-foreground hover:bg-muted hover:text-foreground',
               )}>{value}</button>
@@ -311,13 +287,19 @@ export function ScheduleApp() {
             </Button>
           </div>
           {error && <div className="mt-3 rounded-[12px] bg-destructive-soft px-3 py-2 text-xs text-destructive-foreground">{error}</div>}
+          {notice && <output className="mt-3 block text-xs text-muted-foreground">{notice}</output>}
+          {missingSubject && <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-warning-soft px-3 py-2 text-xs text-warning-foreground">
+            <span>The linked course is not in this user’s schedule for this semester.</span>
+            <Button size="xs" variant="outline" onClick={() => setSubjectId('all')}>Show all courses</Button>
+          </div>}
+          {copyNotice && <output className="mt-3 block text-xs text-success">{copyNotice}</output>}
         </section>
 
         <nav className="sticky top-3 z-20 mt-4 flex gap-2 overflow-x-auto rounded-[18px] border border-border bg-background/90 p-2 shadow-sm backdrop-blur-xl md:hidden" aria-label="Weekdays">
           {visibleDays.map((day) => (
-            <a key={day} href={`#${day}`} className="flex min-w-[48px] flex-1 flex-col items-center rounded-[12px] px-2 py-2 text-xs font-semibold text-muted-foreground hover:bg-card hover:text-foreground">
+            <button key={day} onClick={() => document.getElementById(day)?.scrollIntoView({ block: 'start' })} className="flex min-w-[48px] flex-1 flex-col items-center rounded-[12px] px-2 py-2 text-xs font-semibold text-muted-foreground hover:bg-card hover:text-foreground">
               {dayLabelsShort[day]}<span className="mt-0.5 text-[10px] font-medium text-muted-foreground">{dates[day].getDate()}</span>
-            </a>
+            </button>
           ))}
         </nav>
 
@@ -327,21 +309,22 @@ export function ScheduleApp() {
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{view === 'today' ? 'Today' : view === 'subjects' ? 'By course' : 'Week overview'}</p>
                 <h1 className="mt-1.5 text-3xl font-semibold tracking-[-0.055em] text-foreground sm:text-[38px]">
-                  {view === 'subjects' ? `${subjects.length} courses` : `${visibleLessonCount} classes`}
+                  {view === 'subjects' ? `${filteredSubjects.length} ${filteredSubjects.length === 1 ? 'course' : 'courses'}` : `${visibleLessonCount} classes`}
                 </h1>
               </div>
               <div className="text-right text-xs leading-relaxed text-muted-foreground">{dates.monday.getDate()} {monthNames[dates.monday.getMonth()]} — {dates.saturday.getDate()} {monthNames[dates.saturday.getMonth()]}</div>
             </div>
 
-            {loading && subjects.length === 0 ? (
+            {!selectionReady || (loading && subjects.length === 0) ? (
               <div className="rounded-[24px] border border-border bg-card/70 px-6 py-12 text-center">
-                <RefreshCw className="mx-auto size-5 animate-spin text-accent" />
-                <div className="mt-3 text-sm font-semibold text-foreground">Loading schedule</div>
+                {loading && <RefreshCw className="mx-auto size-5 animate-spin text-accent" />}
+                <div className="mt-3 text-sm font-semibold text-foreground">{loading ? 'Loading schedule' : 'Schedule unavailable'}</div>
                 <div className="mt-1 text-xs text-muted-foreground">User: {selectedUserName}</div>
+                {!loading && !online && <div className="mt-2 text-xs text-muted-foreground">This user and semester are not cached on this device. Connect to the internet to open the link.</div>}
               </div>
             ) : <div className="space-y-8">
               {view === 'subjects' ? (
-                <SubjectCatalog subjects={subjects} lessons={lessons} />
+                <SubjectCatalog subjects={filteredSubjects} lessons={lessons} />
               ) : visibleDays.map((day) => (
                 <DaySection
                   key={day}
@@ -399,11 +382,19 @@ export function ScheduleApp() {
           </aside>
         </div>
       </div>
-      <nav className="fixed inset-x-3 bottom-3 z-40 grid grid-cols-5 rounded-[20px] border border-border bg-background/92 p-1.5 shadow-[0_14px_38px_rgb(var(--theme-shadow-color)/14%)] backdrop-blur-xl md:hidden" aria-label="Main navigation">
-        {([['today', 'Today'], ['week', 'Week'], ['subjects', 'Courses']] as const).map(([value, label]) => <button key={value} onClick={() => value === 'today' ? goToToday() : setView(value)} className={cn('rounded-[14px] px-2 py-2.5 text-[11px] font-semibold', view === value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground')}>{label}</button>)}
-        <a href="#/changes" className="flex items-center justify-center rounded-[14px] px-1 py-2.5 text-[11px] font-semibold text-muted-foreground">Changes</a>
-        <a href="#/settings" className="flex items-center justify-center rounded-[14px] px-2 py-2.5 text-[11px] font-semibold text-muted-foreground">Settings</a>
+      <nav className="fixed inset-x-3 bottom-3 z-40 grid grid-cols-3 rounded-[20px] border border-border bg-background/92 p-1.5 shadow-[0_14px_38px_rgb(var(--theme-shadow-color)/14%)] backdrop-blur-xl md:hidden" aria-label="Main navigation">
+        {([['today', 'Today'], ['week', 'Week'], ['subjects', 'Courses']] as const).map(([value, label]) => <button key={value} aria-pressed={view === value} onClick={() => value === 'today' ? goToToday() : setView(value)} className={cn('min-h-11 rounded-[14px] px-2 py-2.5 text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring', view === value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground')}>{label}</button>)}
       </nav>
+      <Dialog open={Boolean(manualCopyUrl)} onOpenChange={(open) => { if (!open) setManualCopyUrl(''); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Copy schedule link</DialogTitle>
+            <DialogDescription>Automatic copying is unavailable. Select and copy the link below. It contains viewing state only, never your PIN or edit token.</DialogDescription>
+          </DialogHeader>
+          <label htmlFor="schedule-share-link" className="text-xs font-medium">Schedule link</label>
+          <Input id="schedule-share-link" readOnly value={manualCopyUrl} onFocus={(event) => event.target.select()} />
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }

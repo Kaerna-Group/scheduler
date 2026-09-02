@@ -45,6 +45,7 @@ export interface AdminAuditResponse {
 }
 
 export interface AdminOverview {
+  apiVersion: number;
   actor: ScheduleUser;
   revision: number;
   schema: { current: string | null; expected: string };

@@ -13,6 +13,7 @@ import { SemesterManagement } from '@/components/settings/semester-management';
 import { useAdmin } from '@/hooks/use-admin';
 import { usePreferences } from '@/hooks/use-preferences';
 import { useTheme } from '@/hooks/use-theme';
+import { API_VERSION } from '@/lib/api/client';
 import { AuditEntries, AuditLog } from './audit-log';
 import { TokenDialog } from './user-dialogs';
 import { UsersPanel } from './users-panel';
@@ -248,6 +249,10 @@ export function AdminPage() {
                   <div className="rounded-2xl border border-border bg-card p-5">
                     <h3 className="font-semibold">Health and schema</h3>
                     <dl className="mt-3 space-y-2 text-sm">
+                      <div className="flex justify-between gap-3">
+                        <dt>API version</dt>
+                        <dd>v{overview.apiVersion} · site supports v{API_VERSION}</dd>
+                      </div>
                       <div className="flex justify-between gap-3">
                         <dt>API</dt>
                         <dd>

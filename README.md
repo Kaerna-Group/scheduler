@@ -50,11 +50,61 @@ The unified check runs type checking, linting, tests, the production build, and 
 
 DOM integration tests also connect the real frontend repositories to the actual Apps Script API/auth/validation code, with spreadsheet persistence isolated in memory. They exercise user administration, enrollment editing, semesters, per-course import decisions and import undo without Google credentials or production writes. See the [verification report](docs/verification-2026-09-02.md) for coverage and remaining deployment checks.
 
+### Frontend ↔ Apps Script contract tests
+
+```bash
+npm run test:contracts
+```
+
+This focused suite is also included in `npm test`, `npm run check`, and CI. It runs the actual `buildUserSchedule_()`, GET/POST handlers, authentication, validation and import logic against an isolated in-memory database. Responses pass through JSON serialization and the real frontend API client/repositories; DTOs are checked at runtime against the current TypeScript declarations (including imported preferences/theme types), not a handwritten duplicate or a `fetch<UserSchedule>()` cast.
+
+- Schedule DTOs: populated/empty schedules, numeric weeks/groups/revisions, optional field omission, saved/default preferences, current/archived semesters, cache and export/import round trips, and absence of credentials in public responses.
+- Error contracts: `STALE_DATA` with both revisions, `COURSE_DATA_CONFLICT` with per-course subject/lesson details, invalid/inactive credentials (`UNAUTHORIZED`), inactive target users (`USER_NOT_FOUND`), and unknown or non-writable semesters (`SEMESTER_NOT_FOUND`). Failed operations must leave database tables, AuditLog, revisions and browser caches unchanged.
+- Regression guards deliberately corrupt required fields, number types, enum values and nested preferences to verify that the checker catches drift. Additional fields remain compatible. The companion API-version suite covers version negotiation and malformed responses.
+
+These tests do not contact Google or write production data. They validate source-level frontend/backend compatibility, not the deployed Apps Script version or Google's spreadsheet/runtime services; those still need deployment smoke checks. The TypeScript compiler-based checker is test-only and is not bundled into the frontend.
+
+## Shareable schedule links
+
+Choose a week, user, semester and course, then open **⋯ → Copy schedule link**. The URL opens the same selection on another device; it never includes a PIN or edit token. If the browser denies clipboard access, a dialog provides a selectable link for manual copying. The usual site PIN gate still applies.
+
+- `#/week/5` opens week 5 for the device's selected user/semester (the backend's current semester on a fresh device).
+- `#/week/6?user=ermolz&semester=SEM-2026-FALL&subject=565095` opens Scrum on week 6. Generated links always include user and semester, and prefer stable external course codes; subject IDs also work.
+- `#/today?...` and `#/courses?...` preserve the view, with `week` in their query. Query parameters before the hash and `#/?week=5` are also accepted; hash values take precedence and `/week/6` takes precedence over a `week` query parameter.
+
+Explicit links take priority over remembered week/filter/view preferences. With no viewing state in the URL, local defaults still apply. Selection changes update the address without a full page reload; browser Back/Forward restores the previous selection. Canonicalization replaces the current history entry, and changing only a view/week/filter does not refetch a resolved user/semester.
+
+Week limits are validated against the loaded semester, not a temporary fallback. Malformed/out-of-range parameters show a notice; unknown subjects show an empty filtered result with a clear-filter action. Unavailable users/semesters retain their target URL without substituting another user's lessons. Cached links work offline, and uncached selections retry on reconnection. Links identify a **live view**, not an immutable snapshot of a revision.
+
+URL parsing, navigation, clipboard fallback, PIN preservation, offline recovery and real frontend/Apps Script integration are covered by `tests/schedule-location.test.ts` and `tests/schedule-links-flow.test.tsx`, included in `npm test` and CI. No backend schema change is required for this feature.
+
 ## Offline and synchronization
 
 The schedule distinguishes fresh, offline/cached, pending-change and backend-unavailable states. Online/offline events refresh its snapshot on reconnection. Preferences keep per-user pending patches locally and resume synchronization on reconnection, focus or token replacement. Transient failures retry with a bounded backoff (2–30 seconds); individual requests time out after 30 seconds. User changes and unmounts cancel obsolete retries and ignore late responses. Authentication and validation failures do not retry automatically.
 
 Only idempotent preference patches use automatic write retries. Imports, undo, enrollment changes and administrative writes require online confirmation and a current revision; uncertain writes are never automatically replayed.
+
+## Apps Script schedule cache
+
+Schedule GETs use a best-effort script cache keyed by user, resolved semester, data revision and the owner's settings revision. The namespace includes the spreadsheet, API/schema/cache-format versions, a public metadata fingerprint and a recovery epoch. This prevents cross-user/workbook collisions and stale settings when only `settings_revision` changes. Default and explicit requests for the current semester share one entry.
+
+A cold request reads all **12 tables once**. A hit reads only **4 small tables** (`Meta`, `Users`, `Semesters`, `UserPreferences`) to resolve the live revision, active user and current semester; it skips schedule tables and AuditLog entirely. The revision lookup itself is deliberately not cached. Import, undo, enrollments, admin and semester changes naturally select a new key. No tokens, token hashes, authentication results, errors, health responses or uncommitted drafts are cached.
+
+Cached GETs share the writers' script lock; table writes flush before unlock. A persistent bypass marker protects against partial Sheets writes or flush failures. Reads remain uncached after such a failure; a subsequent successful write advances a separate cache recovery epoch before re-enabling caching, so old entries cannot reappear. This is a cache safety mechanism, not transaction rollback or automatic repair of a partially written spreadsheet.
+
+Entries expire after at most five minutes. Eviction, cache outages, malformed/checksum-mismatched entries and oversized UTF-8 payloads fall back to normal reads. The configured size ceiling is 90,000 bytes; entries are never truncated. See [Google's CacheService limits and eviction behavior](https://developers.google.com/apps-script/reference/cache/cache).
+
+Run `npm run test:cache` for cache behavior, isolation, read-count and write-failure tests; these are also included in `npm test` and CI. After direct manual edits to schedule tables, increment `Meta.data_revision` once edits are complete or allow the cache TTL to expire. Prefer the API, which handles revisions and locking. Publishing this feature needs no Sheets migration; bump `scheduleCacheVersion` when changing cached DTO construction without an API/schema version change.
+
+## API compatibility
+
+The backend API contract is versioned separately as integer `apiVersion: 1`. Health and every success/error envelope include it; new frontend requests send it in GET parameters or the POST JSON body. This is independent of import `schemaVersion: 1`, Sheets schema version `2`, data revisions, and numbered Apps Script deployments.
+
+The shared API client checks every response, distinguishes an old/unversioned backend from a newer unsupported API, and replaces malformed JSON/HTML errors with deployment instructions. It preserves schedule/history caches and pending preference patches; compatibility failures do not automatically replay writes. Admin sessions are cleared on incompatible responses, and System shows the backend API version.
+
+Every mutating POST first checks uncached health, without sending tokens or drafts. Read-only POSTs validate their own response without this extra round trip. Requests remain cancellable and have a 30-second timeout. The server also rejects incompatible request versions before dispatching an operation.
+
+Deploy the backend first, then the frontend. Original clients that omit `apiVersion` are treated as v1 during rollout; new clients deliberately reject deployments that do not report a version. This change does not require a Sheets migration. See the [API contract and version policy](apps-script/README.md#api-version-contract).
 
 ## Import and export
 

@@ -1,5 +1,5 @@
 import { fallbackSchedule } from '@/data/fallback-schedule';
-import { createApiUrl, parseApiResponse, postApi } from '@/lib/api/client';
+import { getApi, postApi } from '@/lib/api/client';
 import type { ImportPlanResponse, ScheduleImportV1, ScheduleUser, SharedConflictResolution, UserSchedule } from '@/lib/schedule/types';
 
 const CACHE_PREFIX = 'scheduler_cache_v1:';
@@ -160,13 +160,9 @@ export function forgetAllEditTokens() {
 }
 
 export async function fetchSchedule(userSlug: string, semesterId?: string, signal?: AbortSignal) {
-  const url = createApiUrl();
-  url.searchParams.set('action', 'schedule');
-  url.searchParams.set('user', userSlug);
-  if (semesterId) url.searchParams.set('semester', semesterId);
-  const response = await fetch(url, { signal, cache: 'no-store' });
-  if (!response.ok) throw new Error(`The API is unavailable: HTTP ${response.status}.`);
-  const schedule = parseApiResponse<UserSchedule>(await response.json());
+  const parameters: Record<string, string> = { action: 'schedule', user: userSlug };
+  if (semesterId) parameters.semester = semesterId;
+  const schedule = await getApi<UserSchedule>(parameters, signal);
   writeCachedSchedule(schedule);
   try { localStorage.setItem(lastSyncKey(schedule.user.slug, schedule.semester.id), new Date().toISOString()); } catch { /* metadata is optional */ }
   return schedule;

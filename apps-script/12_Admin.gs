@@ -199,6 +199,7 @@ function adminOverview_(body) {
   try { semesters = publicSemesters_(database); } catch (error) { /* The diagnostics screen remains available on broken schema. */ }
   const current = semesters.find(function (row) { return row.current; }) || null;
   return {
+    apiVersion: SCHEDULER_CONFIG.apiVersion,
     actor: publicUser_(actor), revision: getRevisionFromDb_(database),
     schema: { current: schema ? String(schema.value) : null, expected: SCHEDULER_CONFIG.schemaVersion },
     semester: current, semesters: semesters,

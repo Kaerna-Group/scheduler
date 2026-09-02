@@ -6,6 +6,7 @@ function doGet(event) {
       const database = loadDatabase_();
       const schemaRow = database.Meta.find(function (row) { return row.key === 'schema_version'; });
       return {
+        apiVersion: SCHEDULER_CONFIG.apiVersion,
         status: 'ok',
         revision: getRevisionFromDb_(database),
         schemaVersion: schemaRow ? String(schemaRow.value) : null,
@@ -13,8 +14,9 @@ function doGet(event) {
         sheets: Object.keys(SCHEDULER_SHEETS),
       };
     }
+    assertApiVersion_(parameters.apiVersion);
     if (action === 'schedule') {
-      return buildUserSchedule_(parameters.user, parameters.semester);
+      return getCachedUserSchedule_(parameters.user, parameters.semester);
     }
     if (action === 'changes') {
       return buildScheduleHistory_(parameters.user, parameters.semester, parameters.limit);
@@ -35,6 +37,10 @@ function doPost(event) {
       throw schedulerError_('INVALID_JSON', 'Request body must contain valid JSON.');
     }
 
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      throw schedulerError_('INVALID_JSON', 'Request body must be a JSON object.');
+    }
+    assertApiVersion_(body.apiVersion);
     if (body.action === 'previewImport') return importPersonalSchedule_(body, true);
     if (body.action === 'importSchedule') return importPersonalSchedule_(body, false);
     if (body.action === 'updateEnrollments') return updateEnrollments_(body);
@@ -54,14 +60,26 @@ function doPost(event) {
   });
 }
 
+function assertApiVersion_(requestedVersion) {
+  // Unversioned clients use the original v1 contract, not whichever version is newest.
+  const clientVersion = requestedVersion === undefined ? 1 : requestedVersion;
+  if (clientVersion !== SCHEDULER_CONFIG.apiVersion && clientVersion !== String(SCHEDULER_CONFIG.apiVersion)) {
+    throw schedulerError_('API_VERSION_MISMATCH', 'The client and backend API versions are incompatible. Update the older deployment before retrying.', {
+      serverApiVersion: SCHEDULER_CONFIG.apiVersion,
+      clientApiVersion: clientVersion,
+    });
+  }
+}
+
 function apiBoundary_(operation) {
   try {
-    return jsonOutput_({ ok: true, data: operation() });
+    return jsonOutput_({ apiVersion: SCHEDULER_CONFIG.apiVersion, ok: true, data: operation() });
   } catch (error) {
     console.error(error && error.stack ? error.stack : error);
     let revision;
     try { revision = getRevisionFromDb_(loadDatabase_()); } catch (ignored) { revision = undefined; }
     return jsonOutput_({
+      apiVersion: SCHEDULER_CONFIG.apiVersion,
       ok: false,
       error: {
         code: error.code || 'INTERNAL_ERROR',

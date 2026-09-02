@@ -54,6 +54,7 @@ const actor = {
   role: 'admin' as const,
 };
 const overview: AdminOverview = {
+  apiVersion: 1,
   actor,
   revision: 10,
   schema: { current: '2', expected: '2' },
@@ -312,7 +313,13 @@ describe('admin session and safe mutations', () => {
     expect(result.current.error).toContain('your revision: 10');
   });
 
-  it.each(['FORBIDDEN', 'UNAUTHORIZED'])(
+  it.each([
+    'FORBIDDEN',
+    'UNAUTHORIZED',
+    'API_VERSION_MISSING',
+    'API_VERSION_MISMATCH',
+    'INVALID_API_RESPONSE',
+  ])(
     'clears all admin state when the server revokes access (%s)',
     async (code) => {
       const { result } = renderHook(useAdmin);
@@ -445,6 +452,7 @@ describe('admin interface', () => {
       screen.getByRole('heading', { name: 'Health and schema' }),
     ).toBeTruthy();
     expect(screen.getByText('Available at last check')).toBeTruthy();
+    expect(screen.getByText('v1 · site supports v1')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'End session' }));
     expect(
       screen.queryByRole('navigation', { name: 'Admin sections' }),

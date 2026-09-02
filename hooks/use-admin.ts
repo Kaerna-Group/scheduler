@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useNetworkStatus } from '@/hooks/use-network-status';
-import { ApiError, hasRemoteApi } from '@/lib/api/client';
+import {
+  ApiError,
+  hasRemoteApi,
+  isApiCompatibilityError,
+} from '@/lib/api/client';
 import {
   getAdminAuditLog,
   getAdminOverview,
@@ -28,6 +32,7 @@ function initialToken() {
 }
 
 export function adminErrorMessage(error: unknown) {
+  if (isApiCompatibilityError(error)) return error.message;
   if (error instanceof ApiError) {
     if (error.code === 'UNKNOWN_ACTION')
       return 'This backend does not support the requested admin operation. Publish the latest Apps Script bundle to the existing web-app deployment, then try again.';
@@ -82,8 +87,9 @@ export function useAdmin() {
   const report = useCallback(
     (failure: unknown) => {
       if (
-        failure instanceof ApiError &&
-        ['UNAUTHORIZED', 'FORBIDDEN'].includes(failure.code)
+        isApiCompatibilityError(failure) ||
+        (failure instanceof ApiError &&
+          ['UNAUTHORIZED', 'FORBIDDEN'].includes(failure.code))
       )
         logout();
       setError(adminErrorMessage(failure));

@@ -1,4 +1,4 @@
-import { createApiUrl, parseApiResponse, postApi } from '@/lib/api/client';
+import { getApi, postApi } from '@/lib/api/client';
 import type { ScheduleHistoryResponse } from '@/lib/history/types';
 import type { UserSchedule } from '@/lib/schedule/types';
 
@@ -26,14 +26,9 @@ function writeCachedHistory(response: ScheduleHistoryResponse) {
 }
 
 export async function fetchScheduleHistory(userSlug: string, semesterId: string, signal?: AbortSignal) {
-  const url = createApiUrl();
-  url.searchParams.set('action', 'changes');
-  url.searchParams.set('user', userSlug);
-  url.searchParams.set('semester', semesterId);
-  url.searchParams.set('limit', '150');
-  const response = await fetch(url, { signal, cache: 'no-store' });
-  if (!response.ok) throw new Error(`The API is unavailable: HTTP ${response.status}.`);
-  const history = parseApiResponse<ScheduleHistoryResponse>(await response.json());
+  const history = await getApi<ScheduleHistoryResponse>({
+    action: 'changes', user: userSlug, semester: semesterId, limit: '150',
+  }, signal);
   writeCachedHistory(history);
   return history;
 }

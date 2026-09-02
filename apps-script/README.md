@@ -44,7 +44,7 @@ Verify a published deployment through:
 GET /exec?action=health
 ```
 
-The response includes `schemaVersion`, `expectedSchemaVersion`, and the complete `sheets` list. Both schema versions must be `2`, and `sheets` must include `UserPreferences`.
+The response envelope and health data include `apiVersion: 1`. Health also includes `schemaVersion`, `expectedSchemaVersion`, and the complete `sheets` list. Both schema versions must be `2`, and `sheets` must include `UserPreferences`.
 
 ## clasp deployment
 
@@ -88,11 +88,47 @@ Every user receives exactly one `UserPreferences` row keyed by `user_id`. Databa
 
 ## API
 
+### Revision-keyed schedule caching
+
+`GET action=schedule` calls `getCachedUserSchedule_()` from `13_Cache.gs`. Cache misses still use the original `buildUserSchedule_()` and its complete integrity validation; mutation responses always build from their own database snapshot and never populate this cache.
+
+The conceptual key is `schedule:<scope>:<user>:<semester>:<data_revision>:settings:<settings_revision>`. The scope hashes the spreadsheet ID, API/schema/cache format versions, live public user/semester metadata, the owner's preference row and a recovery epoch. Token hashes are excluded. Long keys are hashed again to stay below 250 characters. Both cache identity and a SHA-256 payload checksum are verified before returning an entry.
+
+Each GET holds the same script lock as writers and reads `Meta`, `Users`, `Semesters`, `UserPreferences` directly. On a hit, the other eight tables are not read. On a miss, the loader reuses these four tables and reads each remaining table once. An inactive user is denied even if an old entry is present; archived semesters remain readable. Cache exceptions/eviction cannot turn a successful schedule read into an error. Health, authentication, writes and history do not use this schedule cache.
+
+`persistDatabase_()` sets `SCHEDULER_CACHE_WRITE_PENDING` in Script Properties before writing and calls `SpreadsheetApp.flush()` before the writer releases its lock. If a table write or flush fails, the marker remains and schedule GETs bypass the cache until a successful write. Recovery also changes `SCHEDULER_CACHE_RECOVERY_EPOCH` before clearing the marker, preventing same-revision entries from before the failure from becoming eligible again. This does not make Sheets writes atomic or repair partial data; inspect backend diagnostics after a storage failure. Setup/schema upgrades also use the lock and persistence coordinator.
+
+Configuration in `00_Config.gs`: 300-second TTL, a conservative 90,000-byte UTF-8 entry limit, and `scheduleCacheVersion: 1`. Google may evict entries early; values over the size ceiling are served normally but not cached. See [Cache limits](https://developers.google.com/apps-script/reference/cache/cache) and [flush-before-unlock guidance](https://developers.google.com/apps-script/reference/lock/lock#releaseLock()). No Sheets migration or new deployment permissions are required. If DTO construction changes within an existing API/schema version, increment `scheduleCacheVersion` before publishing. Manual changes to schedule tables must increment `Meta.data_revision` (or wait for the five-minute TTL); API writes already handle revision changes.
+
+Run `npm run test:cache` from the repository root. The isolated real-backend tests measure 12 → 4 table reads and cover user/semester/spreadsheet isolation, settings revisions, import/undo/admin changes, TTL/eviction, corrupt or oversized entries, cache outages, and partial-write/flush recovery. Google services are mocked; live performance/quota checks remain a separate deployment smoke test.
+
+### API version contract
+
+`SCHEDULER_CONFIG.apiVersion` is the integer API contract version, currently **1**. It is not the Apps Script deployment number, import `schemaVersion`, Sheets `schema_version`, or data/settings revision. Keep the matching frontend `API_VERSION` in `lib/api/client.ts` in sync.
+
+All responses, including validation/authentication errors, contain the version at the envelope level:
+
+```json
+{ "apiVersion": 1, "ok": true, "data": { "apiVersion": 1, "status": "ok", "revision": 8, "schemaVersion": "2", "expectedSchemaVersion": "2", "sheets": ["Users", "UserPreferences"] } }
+```
+
+The example shortens the health table list. Ordinary data payloads need not repeat `apiVersion`; health and admin overview do, for diagnostics. Errors retain the existing `{ ok: false, error: { code, message, details }, revision? }` structure with the added envelope `apiVersion`.
+
+New clients send `apiVersion=1` in GET query parameters and `"apiVersion": 1` in POST JSON bodies. `health` remains readable regardless of the requested version so that clients can negotiate compatibility. Other actions reject incompatible versions with `API_VERSION_MISMATCH` before dispatch; the error details identify `serverApiVersion` and `clientApiVersion`. An omitted version means the original **v1**, not the latest version.
+
+For backward-compatible additions (optional fields or new actions), keep the API version unchanged. Breaking request/response semantics require a new integer version, matching frontend changes, tests and a rollout plan. A future version must not silently treat unversioned clients as its new contract.
+
+For the initial rollout, publish the versioned backend before the frontend. The previous frontend ignores added envelope fields and still works with v1. The new frontend rejects an unversioned backend, a malformed envelope, HTML instead of JSON, or an unsupported newer API with actionable messages. No spreadsheet migration or data revision change is needed just to publish this contract.
+
+Run `npm run test:contracts` from the repository root after changing a DTO or error response. This suite executes the actual Apps Script source with Google persistence isolated in memory, then checks JSON responses against the frontend TypeScript declarations and the real API client. It covers schedule/export/import DTOs, preferences, semester variants, `STALE_DATA`, shared course conflicts, invalid tokens, inactive users and invalid semesters. It is included in the normal CI check; production deployment smoke checks remain separate. See [contract test coverage](../README.md#frontend--apps-script-contract-tests).
+
+Before mutating POSTs, the frontend performs a fresh `health` GET; a failed compatibility check prevents sending the mutation or its token/draft. Every subsequent response is still checked, and the server independently verifies the requested version. Read-only `previewImport` and the three admin read actions skip the extra health request. There is no persistent compatibility cache and no automatic retry of imports, undo or admin writes.
+
 ### Read
 
 ```text
-GET /exec?action=schedule&user=ermolz&semester=SEM-2026-FALL
-GET /exec?action=changes&user=ermolz&semester=SEM-2026-FALL&limit=150
+GET /exec?action=schedule&apiVersion=1&user=ermolz&semester=SEM-2026-FALL
+GET /exec?action=changes&apiVersion=1&user=ermolz&semester=SEM-2026-FALL&limit=150
 ```
 
 `changes` returns a sanitized, newest-first schedule history. It includes shared lesson/course/group changes only for offerings that belong or previously belonged to the selected user, plus that user’s personal enrollment changes. Preference changes, system migrations, and other users’ personal enrollment changes are excluded.
@@ -102,6 +138,7 @@ GET /exec?action=changes&user=ermolz&semester=SEM-2026-FALL&limit=150
 ```json
 {
   "action": "previewImport",
+  "apiVersion": 1,
   "userSlug": "ermolz",
   "editToken": "...",
   "baseRevision": 1,
@@ -123,6 +160,7 @@ Every successful import records an `Import` transaction marker in `AuditLog`. Th
 ```json
 {
   "action": "undoLastImport",
+  "apiVersion": 1,
   "editToken": "...",
   "baseRevision": 12
 }
@@ -167,6 +205,7 @@ Admin System shows schema/integrity warnings; it never repairs or migrates data 
 ```json
 {
   "action": "updatePreferences",
+  "apiVersion": 1,
   "userSlug": "ermolz",
   "editToken": "...",
   "baseSettingsRevision": 4,

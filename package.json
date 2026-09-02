@@ -10,6 +10,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
+    "test:contracts": "vitest run tests/api-contract.test.ts tests/api-version.test.ts",
+    "test:cache": "vitest run tests/apps-script-cache.test.ts",
     "test": "vitest run && node scripts/test-apps-script-import.mjs && node scripts/test-apps-script-preferences.mjs && node scripts/test-apps-script-schema.mjs && node scripts/test-apps-script-history.mjs && node scripts/test-apps-script-undo.mjs && node scripts/test-apps-script-semesters.mjs && node scripts/test-apps-script-admin.mjs",
     "apps-script:bundle": "node scripts/bundle-apps-script.mjs",
     "lint": "oxlint",
