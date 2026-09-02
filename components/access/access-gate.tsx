@@ -2,6 +2,7 @@ import { type ReactNode, type SyntheticEvent, useState } from 'react';
 import { CalendarDays, KeyRound, LockKeyhole, ShieldCheck } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { PwaInstallButton } from '@/components/pwa/pwa-provider';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 
 export const ACCESS_KEY = 'schedule_access_v1';
@@ -122,6 +123,7 @@ export function AccessGate({ children }: { children: ReactNode }) {
         <p className="mt-6 text-center text-[11px] leading-relaxed text-muted-foreground">
           Local protection against accidental visitors
         </p>
+        <PwaInstallButton />
       </section>
     </main>
   );

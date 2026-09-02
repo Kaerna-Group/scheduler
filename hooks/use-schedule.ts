@@ -9,7 +9,7 @@ import {
   readPreferences,
 } from '@/lib/preferences/local-storage';
 import {
-  fetchSchedule,
+  fetchScheduleUpdate,
   getFallbackSchedule,
   hasRemoteApi,
   readCachedSchedule,
@@ -17,6 +17,8 @@ import {
   readLastSync,
 } from '@/lib/schedule/repository';
 import type { ScheduleSource, UserSchedule } from '@/lib/schedule/types';
+import { compareScheduleSync } from '@/lib/schedule/sync-diff';
+import type { ScheduleSyncDiff } from '@/lib/schedule/sync-diff';
 
 const USER_KEY = 'scheduler_selected_user_v1';
 const SEMESTER_KEY = 'scheduler_selected_semester_v1';
@@ -30,6 +32,7 @@ interface Snapshot {
   schedule: UserSchedule;
   source: ScheduleSource;
   available: boolean;
+  syncedAt?: string;
 }
 
 function initialUser() {
@@ -95,6 +98,7 @@ export function useSchedule(selection?: Selection) {
     [selectedUser, requestedSemesterId],
   );
   const [snapshot, setSnapshot] = useState(initial);
+  const [syncChanges, setSyncChanges] = useState<ScheduleSyncDiff | null>(null);
   const current = snapshot.key === initial.key ? snapshot : initial;
   const { schedule, source } = current;
   const selectedSemesterId = requestedSemesterId || schedule.semester.id;
@@ -116,21 +120,38 @@ export function useSchedule(selection?: Selection) {
 
   const refresh = useCallback(async () => {
     if (!hasRemoteApi() || !readOnlineStatus()) {
-      resolvedSnapshot.current = initial;
+      if (resolvedSnapshot.current?.key !== initial.key)
+        resolvedSnapshot.current = initial;
       setRequest({ key: initial.key, loading: false, error: '' });
       return;
     }
     requestRef.current?.abort();
     const controller = new AbortController();
     requestRef.current = controller;
+    const previousMemory = resolvedSnapshot.current;
     setRequest({ key: initial.key, loading: true, error: '' });
     try {
-      const remote = await fetchSchedule(
+      const update = await fetchScheduleUpdate(
         selectedUser,
         requestedSemesterId || undefined,
         controller.signal,
       );
       if (controller.signal.aborted) return;
+      const remote = update.schedule;
+      const memoryBaseline =
+        previousMemory?.available && previousMemory.source !== 'fallback'
+          ? previousMemory
+          : null;
+      setSyncChanges(
+        compareScheduleSync(
+          update.previousSchedule ?? memoryBaseline?.schedule ?? null,
+          remote,
+          update.previousSchedule
+            ? update.previousSync
+            : (memoryBaseline?.syncedAt ?? ''),
+          update.syncedAt,
+        ),
+      );
       if (remote.preferences && Number.isInteger(remote.preferencesRevision)) {
         const revision = remote.preferencesRevision ?? 0;
         acceptRemotePreferences(
@@ -145,6 +166,7 @@ export function useSchedule(selection?: Selection) {
         schedule: remote,
         source: 'remote',
         available: true,
+        syncedAt: update.syncedAt,
       };
       resolvedSnapshot.current = next;
       setSnapshot(next);
@@ -180,6 +202,7 @@ export function useSchedule(selection?: Selection) {
       setRequest({ key: initial.key, loading: false, error: '' });
       resolvedSnapshot.current = next;
     } else {
+      setSyncChanges(null);
       setSnapshot(initial);
       if (
         (previousKey !== null && previousKey !== initial.key) ||
@@ -265,5 +288,13 @@ export function useSchedule(selection?: Selection) {
     remoteConfigured: hasRemoteApi(),
     lastSync: readLastSync(selectedUser, selectedSemesterId),
     online,
+    syncChanges:
+      current.available &&
+      syncChanges?.userId === schedule.user.id &&
+      syncChanges.userSlug === selectedUser &&
+      syncChanges.semesterId === selectedSemesterId
+        ? syncChanges
+        : null,
+    dismissSyncChanges: () => setSyncChanges(null),
   };
 }

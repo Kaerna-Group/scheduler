@@ -8,6 +8,9 @@ import {
 
 import { Badge } from '@/components/ui/badge';
 import { ScheduleActionsMenu } from '@/components/schedule/schedule-actions-menu';
+import { NextLessonBanner } from '@/components/schedule/next-lesson-banner';
+import { SyncChangesNotice } from '@/components/schedule/sync-changes-notice';
+import { CalendarExportDialog, type CalendarExportSnapshot } from '@/components/schedule/calendar-export-dialog';
 import { SemesterSelect } from '@/components/schedule/semester-select';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -142,7 +145,7 @@ export function ScheduleApp() {
   useTheme(preferences.appearance);
   const {
     schedule, selectedUser, selectedSemesterId, source, loading, error, selectionReady,
-    refresh, remoteConfigured, lastSync, online,
+    refresh, remoteConfigured, lastSync, online, syncChanges, dismissSyncChanges,
   } = useSchedule({ userSlug: route?.user, semesterId: route?.semester, fromLink: route?.explicit });
   const { lessons, subjects, semester } = schedule;
   const currentDay = getCurrentWeekDay();
@@ -151,7 +154,12 @@ export function ScheduleApp() {
   });
   const [copyNotice, setCopyNotice] = useState('');
   const [manualCopyUrl, setManualCopyUrl] = useState('');
-  useEffect(() => { setCopyNotice(''); }, [href]);
+  const [calendarSnapshot, setCalendarSnapshot] = useState<CalendarExportSnapshot | null>(null);
+  useEffect(() => { setCopyNotice(''); setCalendarSnapshot(null); }, [href]);
+  function openCalendarExport() {
+    if (!canShare) return;
+    setCalendarSnapshot({ schedule, source, lastSync, online, backendError: Boolean(error) });
+  }
   async function copyLink() {
     try {
       if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
@@ -235,12 +243,13 @@ export function ScheduleApp() {
             ))}
           </nav>
 
-            <ScheduleActionsMenu user={schedule.users.find((user) => user.slug === selectedUser)} onCopyLink={() => void copyLink()} copyDisabled={!canShare} />
+            <ScheduleActionsMenu user={schedule.users.find((user) => user.slug === selectedUser)} onCopyLink={() => void copyLink()} copyDisabled={!canShare} onExportCalendar={openCalendarExport} exportDisabled={!canShare} />
           </div>
         </div>
       </header>
 
       <div className="relative mx-auto max-w-[1360px] px-4 pb-24 pt-6 sm:px-7 sm:pt-8 lg:px-10">
+        <NextLessonBanner schedule={schedule} source={source} loading={loading} ready={selectionReady} online={online} backendError={Boolean(error)} />
         <section className="rounded-[26px] border border-border bg-card/70 p-4 shadow-[0_16px_55px_rgb(var(--theme-shadow-color)/5%)] backdrop-blur-sm sm:p-5 xl:p-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-2">
@@ -286,6 +295,7 @@ export function ScheduleApp() {
               <RefreshCw className={cn('size-3.5', loading && 'animate-spin')} /> Refresh
             </Button>
           </div>
+          {syncChanges && <SyncChangesNotice comparison={syncChanges} onDismiss={dismissSyncChanges} />}
           {error && <div className="mt-3 rounded-[12px] bg-destructive-soft px-3 py-2 text-xs text-destructive-foreground">{error}</div>}
           {notice && <output className="mt-3 block text-xs text-muted-foreground">{notice}</output>}
           {missingSubject && <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-warning-soft px-3 py-2 text-xs text-warning-foreground">
@@ -385,6 +395,7 @@ export function ScheduleApp() {
       <nav className="fixed inset-x-3 bottom-3 z-40 grid grid-cols-3 rounded-[20px] border border-border bg-background/92 p-1.5 shadow-[0_14px_38px_rgb(var(--theme-shadow-color)/14%)] backdrop-blur-xl md:hidden" aria-label="Main navigation">
         {([['today', 'Today'], ['week', 'Week'], ['subjects', 'Courses']] as const).map(([value, label]) => <button key={value} aria-pressed={view === value} onClick={() => value === 'today' ? goToToday() : setView(value)} className={cn('min-h-11 rounded-[14px] px-2 py-2.5 text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring', view === value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground')}>{label}</button>)}
       </nav>
+      {calendarSnapshot && calendarSnapshot.schedule.user.slug === selectedUser && calendarSnapshot.schedule.semester.id === selectedSemesterId && <CalendarExportDialog snapshot={calendarSnapshot} onClose={() => setCalendarSnapshot(null)} />}
       <Dialog open={Boolean(manualCopyUrl)} onOpenChange={(open) => { if (!open) setManualCopyUrl(''); }}>
         <DialogContent>
           <DialogHeader>

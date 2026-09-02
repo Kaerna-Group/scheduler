@@ -1,11 +1,15 @@
 import {
+  CalendarArrowDown,
   Ellipsis,
   FileJson2,
   History,
   Link,
   Settings2,
   ShieldCheck,
+  Download,
+  RefreshCw,
 } from 'lucide-react';
+import { usePwa } from '@/components/pwa/pwa-provider';
 
 import { canShowAdminLink } from '@/components/admin/admin-link';
 import { Button } from '@/components/ui/button';
@@ -31,11 +35,16 @@ export function ScheduleActionsMenu({
   user,
   onCopyLink,
   copyDisabled = false,
+  onExportCalendar,
+  exportDisabled = false,
 }: {
   user?: ScheduleUser;
   onCopyLink?: () => void;
   copyDisabled?: boolean;
+  onExportCalendar?: () => void;
+  exportDisabled?: boolean;
 }) {
+  const pwa = usePwa();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -62,8 +71,20 @@ export function ScheduleActionsMenu({
               <Link className="size-4 text-muted-foreground" />
               Copy schedule link
             </DropdownMenuItem>
-            <DropdownMenuSeparator className="mx-2 my-1" />
           </>
+        )}
+        {onExportCalendar && (
+          <DropdownMenuItem
+            onClick={onExportCalendar}
+            disabled={exportDisabled}
+            className={itemClassName}
+          >
+            <CalendarArrowDown className="size-4 text-muted-foreground" />
+            Export semester (.ics)
+          </DropdownMenuItem>
+        )}
+        {(onCopyLink || onExportCalendar) && (
+          <DropdownMenuSeparator className="mx-2 my-1" />
         )}
         {actions.map(({ href, label, icon: Icon }) => (
           <DropdownMenuItem
@@ -75,6 +96,27 @@ export function ScheduleActionsMenu({
             {label}
           </DropdownMenuItem>
         ))}
+        {pwa?.state.enabled && (
+          <>
+            <DropdownMenuSeparator className="mx-2 my-1" />
+            {pwa.state.updateAvailable && (
+              <DropdownMenuItem
+                onClick={pwa.showUpdate}
+                className={itemClassName}
+              >
+                <RefreshCw className="size-4 text-muted-foreground" /> Update
+                app
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem
+              onClick={pwa.showInstall}
+              className={itemClassName}
+            >
+              <Download className="size-4 text-muted-foreground" />
+              {pwa.state.installed ? 'App information' : 'Add to home screen'}
+            </DropdownMenuItem>
+          </>
+        )}
         {canShowAdminLink(user) && (
           <>
             <DropdownMenuSeparator className="mx-2 my-1" />

@@ -82,7 +82,7 @@ describe('compact schedule navigation', () => {
     expect(screen.queryByRole('menu')).toBeNull();
 
     const menu = within(await openMenu());
-    expect(menu.getAllByRole('menuitem')).toHaveLength(4);
+    expect(menu.getAllByRole('menuitem')).toHaveLength(5);
     expect(
       menu
         .getByRole('menuitem', { name: 'Import schedule' })

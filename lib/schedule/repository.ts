@@ -159,13 +159,24 @@ export function forgetAllEditTokens() {
   if (typeof window !== 'undefined') window.dispatchEvent(new Event(EDIT_TOKEN_EVENT));
 }
 
-export async function fetchSchedule(userSlug: string, semesterId?: string, signal?: AbortSignal) {
+export async function fetchScheduleUpdate(userSlug: string, semesterId?: string, signal?: AbortSignal) {
   const parameters: Record<string, string> = { action: 'schedule', user: userSlug };
   if (semesterId) parameters.semester = semesterId;
   const schedule = await getApi<UserSchedule>(parameters, signal);
+  // A canceled/obsolete refresh must not overwrite the comparison baseline.
+  signal?.throwIfAborted();
+  if (schedule.user.slug !== userSlug || (semesterId && schedule.semester.id !== semesterId))
+    throw new Error('The backend returned a different user or semester. The saved schedule was not replaced.');
+  const previousSchedule = readCachedSchedule(schedule.user.slug, schedule.semester.id);
+  const previousSync = readLastSync(schedule.user.slug, schedule.semester.id);
+  const syncedAt = new Date().toISOString();
   writeCachedSchedule(schedule);
-  try { localStorage.setItem(lastSyncKey(schedule.user.slug, schedule.semester.id), new Date().toISOString()); } catch { /* metadata is optional */ }
-  return schedule;
+  try { localStorage.setItem(lastSyncKey(schedule.user.slug, schedule.semester.id), syncedAt); } catch { /* metadata is optional */ }
+  return { schedule, previousSchedule, previousSync, syncedAt };
+}
+
+export async function fetchSchedule(userSlug: string, semesterId?: string, signal?: AbortSignal) {
+  return (await fetchScheduleUpdate(userSlug, semesterId, signal)).schedule;
 }
 
 export async function importPersonalSchedule(args: {
