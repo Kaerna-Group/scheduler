@@ -26,6 +26,14 @@ function assertDatabaseIntegrity_(database) {
   const groupIds = new Set(database.Groups.map(function (row) { return row.group_id; }));
   const lessonIds = new Set(database.Lessons.map(function (row) { return row.lesson_id; }));
   const preferenceUserIds = new Set(database.UserPreferences.map(function (row) { return row.user_id; }));
+  if (database.Semesters.length) {
+    const currentSemesterRows = database.Meta.filter(function (row) { return row.key === 'current_semester_id'; });
+    if (currentSemesterRows.length !== 1) throw schedulerError_('INTEGRITY_ERROR', 'Meta.current_semester_id must exist exactly once.');
+    const currentSemester = database.Semesters.find(function (row) { return row.semester_id === currentSemesterRows[0].value; });
+    if (!currentSemester || !isActive_(currentSemester.active)) {
+      throw schedulerError_('INTEGRITY_ERROR', 'Meta.current_semester_id must reference an active semester.');
+    }
+  }
 
   database.Users.forEach(function (row) {
     if (ALLOWED_ROLES.indexOf(row.role) === -1) throw schedulerError_('INTEGRITY_ERROR', 'Invalid role for ' + row.slug);

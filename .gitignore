@@ -35,6 +35,8 @@ next-env.d.ts
 /dist/
 /apps-script/dist/
 /apps-script/.clasp.json
+.clasprc.json
+client_secret*.json
 *.tsbuildinfo
 /.wrangler/
 /outputs/

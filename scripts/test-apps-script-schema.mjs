@@ -18,6 +18,7 @@ const preferencesSource = readFileSync(
   new URL('../apps-script/08_Preferences.gs', import.meta.url),
   'utf8',
 );
+const semestersSource = readFileSync(new URL('../apps-script/11_Semesters.gs', import.meta.url), 'utf8');
 
 const database = {
   Users: [
@@ -25,7 +26,7 @@ const database = {
     { user_id: 'USR-2', slug: 'two', role: 'user' },
   ],
   UserPreferences: [],
-  Semesters: [],
+  Semesters: [{ semester_id: 'SEM-1', title: 'Semester 1', start_date: '2026-09-01', weeks_count: '14', active: 'yes' }],
   Subjects: [],
   Offerings: [],
   Groups: [],
@@ -56,7 +57,7 @@ const context = {
 };
 
 vm.runInNewContext(
-  `${configSource}\n${preferencesSource}\n${validationSource}\n${setupSource}\nglobalThis.schemaTestApi = { upgradeDatabaseSchema_, assertDatabaseIntegrity_ };`,
+  `${configSource}\n${preferencesSource}\n${validationSource}\n${setupSource}\n${semestersSource}\nglobalThis.schemaTestApi = { upgradeDatabaseSchema_, assertDatabaseIntegrity_ };`,
   context,
 );
 
@@ -77,6 +78,7 @@ assert.equal(
   database.Meta.find((row) => row.key === 'data_revision').value,
   '7',
 );
+assert.equal(database.Meta.find((row) => row.key === 'current_semester_id').value, 'SEM-1');
 assert.deepEqual(
   database.UserPreferences.map((row) => row.user_id),
   ['USR-1', 'USR-2'],

@@ -9,10 +9,12 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "vitest run && node scripts/test-apps-script-import.mjs && node scripts/test-apps-script-preferences.mjs && node scripts/test-apps-script-schema.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run && node scripts/test-apps-script-import.mjs && node scripts/test-apps-script-preferences.mjs && node scripts/test-apps-script-schema.mjs && node scripts/test-apps-script-history.mjs && node scripts/test-apps-script-undo.mjs && node scripts/test-apps-script-semesters.mjs && node scripts/test-apps-script-admin.mjs",
     "apps-script:bundle": "node scripts/bundle-apps-script.mjs",
     "lint": "oxlint",
-    "format": "oxfmt"
+    "format": "oxfmt",
+    "check": "npm run typecheck && npm run lint && npm test && npm run build && npm run apps-script:bundle"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",
@@ -35,10 +37,12 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.2.1",
+    "@testing-library/react": "^16.3.3",
     "@types/node": "22.19.19",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.2",
+    "jsdom": "^29.1.1",
     "oxfmt": "0.61.0",
     "oxlint": "1.76.0",
     "oxlint-tsgolint": "7.0.2001",

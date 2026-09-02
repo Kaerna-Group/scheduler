@@ -1,12 +1,14 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle, ArrowLeft, ArrowRight, BookOpenText, CalendarDays,
-  Clock3, CloudOff, FileJson2, Laptop, MapPin, Radio, RefreshCw, Settings2, Sparkles, UserRound,
+  Clock3, CloudOff, FileJson2, History, Laptop, MapPin, Radio, RefreshCw, Settings2, Sparkles, UserRound,
 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
+import { AdminLink } from '@/components/admin/admin-link';
+import { SemesterSelect } from '@/components/schedule/semester-select';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { useSchedule } from '@/hooks/use-schedule';
@@ -134,7 +136,7 @@ export function ScheduleApp() {
   const { preferences, hasPendingChanges } = usePreferences();
   useTheme(preferences.appearance);
   const {
-    schedule, selectedUser, selectUser, source, loading, error,
+    schedule, selectedUser, selectUser, selectedSemesterId, selectSemester, source, loading, error,
     refresh, remoteConfigured, lastSync, online,
   } = useSchedule();
   const { lessons, subjects, semester } = schedule;
@@ -166,6 +168,11 @@ export function ScheduleApp() {
     setWeek(value);
     try { localStorage.setItem('scheduler_selected_week_v1', String(value)); } catch { /* preference only */ }
   };
+
+  useEffect(() => {
+    setWeek(getSemesterWeek(semester.startDate, semester.weeksCount));
+    setSubjectIdState('all');
+  }, [semester.id, semester.startDate, semester.weeksCount]);
 
   const dates = useMemo(() => getWeekDates(semester.startDate, week), [semester.startDate, week]);
   const conflictIds = useMemo(() => preferences.schedule.highlightConflicts ? getConflictIds(lessons, week) : new Set<string>(), [lessons, week, preferences.schedule.highlightConflicts]);
@@ -210,6 +217,8 @@ export function ScheduleApp() {
             </div>
           </div>
 
+          <div className="order-3 flex flex-1 flex-wrap gap-2 sm:order-none sm:flex-initial">
+          <SemesterSelect schedule={schedule} value={selectedSemesterId} onChange={selectSemester} className="flex-1 sm:max-w-[230px]" />
           <Select
             value={selectedUser}
             onValueChange={(value) => {
@@ -227,6 +236,7 @@ export function ScheduleApp() {
               {schedule.users.map((user) => <SelectItem key={user.id} value={user.slug} className="min-h-10 rounded-xl px-3 text-sm focus:bg-muted">{user.displayName}</SelectItem>)}
             </SelectContent>
           </Select>
+          </div>
 
           <nav className="hidden items-center rounded-full border border-border bg-card/70 p-1 md:flex" aria-label="Schedule view">
             {([['today', 'Today'], ['week', 'Week'], ['subjects', 'Courses']] as const).map(([value, label]) => (
@@ -238,10 +248,12 @@ export function ScheduleApp() {
           </nav>
 
           <div className="flex items-center gap-2">
+            <AdminLink user={schedule.users.find((user) => user.slug === selectedUser)} />
             <a href="#/import" className="inline-flex h-10 items-center justify-center gap-1.5 rounded-full border border-border bg-card/80 px-3.5 text-xs font-semibold text-foreground transition hover:bg-card xl:h-11 xl:px-4 xl:text-sm">
               <FileJson2 className="size-3.5" />
               <span className="hidden sm:inline">Import</span>
             </a>
+            <a href="#/changes" className="inline-flex size-10 items-center justify-center rounded-full border border-border bg-card/80 text-foreground transition hover:bg-card xl:h-11 xl:w-auto xl:gap-1.5 xl:px-4 xl:text-sm xl:font-semibold"><History className="size-4" /><span className="hidden xl:inline">Changes</span></a>
             <a href="#/settings" className="inline-flex size-10 items-center justify-center rounded-full border border-border bg-card/80 text-foreground transition hover:bg-card xl:h-11 xl:w-auto xl:gap-1.5 xl:px-4 xl:text-sm xl:font-semibold"><Settings2 className="size-4" /><span className="hidden xl:inline">Settings</span></a>
             <Button variant="outline" onClick={goToToday} className="h-10 rounded-full border-border bg-card/80 px-4 text-xs font-semibold text-foreground shadow-none hover:bg-card xl:h-11 xl:px-5 xl:text-sm">
               <Sparkles className="size-3.5 text-accent" />
@@ -387,8 +399,9 @@ export function ScheduleApp() {
           </aside>
         </div>
       </div>
-      <nav className="fixed inset-x-3 bottom-3 z-40 grid grid-cols-4 rounded-[20px] border border-border bg-background/92 p-1.5 shadow-[0_14px_38px_rgb(var(--theme-shadow-color)/14%)] backdrop-blur-xl md:hidden" aria-label="Main navigation">
+      <nav className="fixed inset-x-3 bottom-3 z-40 grid grid-cols-5 rounded-[20px] border border-border bg-background/92 p-1.5 shadow-[0_14px_38px_rgb(var(--theme-shadow-color)/14%)] backdrop-blur-xl md:hidden" aria-label="Main navigation">
         {([['today', 'Today'], ['week', 'Week'], ['subjects', 'Courses']] as const).map(([value, label]) => <button key={value} onClick={() => value === 'today' ? goToToday() : setView(value)} className={cn('rounded-[14px] px-2 py-2.5 text-[11px] font-semibold', view === value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground')}>{label}</button>)}
+        <a href="#/changes" className="flex items-center justify-center rounded-[14px] px-1 py-2.5 text-[11px] font-semibold text-muted-foreground">Changes</a>
         <a href="#/settings" className="flex items-center justify-center rounded-[14px] px-2 py-2.5 text-[11px] font-semibold text-muted-foreground">Settings</a>
       </nav>
     </main>

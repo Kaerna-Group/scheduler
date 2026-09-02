@@ -8,6 +8,8 @@ export const fallbackSchedule: UserSchedule = {
   users,
   user: users[0],
   semester,
+  semesters: [{ ...semester, archived: false, current: true }],
+  currentSemesterId: semester.id,
   subjects,
   lessons,
   revision: 0,

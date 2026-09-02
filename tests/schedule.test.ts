@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import { fallbackSchedule } from '@/data/fallback-schedule';
 import { buildLlmImportPrompt, scheduleImportExample } from '@/lib/schedule/import-guide';
+import { describeScheduleChange } from '@/lib/history/describe-change';
+import type { ScheduleHistoryEvent } from '@/lib/history/types';
 import { exportSchedule, validateScheduleImport } from '@/lib/schedule/import';
+import { buildImportDiff } from '@/lib/schedule/import-diff';
 import { mergeScheduleUsers } from '@/lib/schedule/repository';
 import type { Lesson } from '@/lib/schedule/types';
 import { getConflictIds, getLessonsForDay, lessonsOverlap } from '@/lib/schedule/utils';
@@ -28,7 +31,48 @@ describe('schedule conflicts', () => {
   });
 });
 
+describe('change history', () => {
+  const historyEvent: ScheduleHistoryEvent = {
+    id: '10:1:LES-1', timestamp: '2026-09-01T10:00:00.000Z', revision: 10,
+    action: 'UPDATE', entityType: 'Lesson', entityId: 'LES-1', scope: 'shared',
+    actor: { id: 'U2', slug: 'zahar', displayName: 'Zahar' },
+    subject: { id: 'SUB-1', offeringId: 'OFF-1', externalCode: 'SCRUM', name: 'Scrum', shortName: 'Scrum', color: '#123456' },
+    oldValue: { ...baseLesson, weeks: Array.from({ length: 14 }, (_, index) => index + 1), room: '1-101' },
+    newValue: { ...baseLesson, weeks: Array.from({ length: 7 }, (_, index) => index + 1), room: '1-202' },
+  };
+
+  it('describes week and room changes in user-facing terms', () => {
+    expect(describeScheduleChange(historyEvent)).toEqual({
+      title: 'Lesson changed',
+      details: ['Weeks 1–14 → 1–7', 'Room 1-101 → 1-202'],
+    });
+  });
+});
+
 describe('import contract', () => {
+  it('groups backend plans into user-facing diff sections and conflicts by course', () => {
+    const diff = buildImportDiff({
+      revision: 8,
+      plan: [
+        { action: 'CREATE', entityType: 'Subject', entityId: 'SUB-1', externalCode: 'NEW', oldValue: null, newValue: { name: 'New course' } },
+        { action: 'CREATE', entityType: 'Lesson', entityId: 'LES-1', externalCode: 'NEW', oldValue: null, newValue: baseLesson },
+        { action: 'REPLACE', entityType: 'Lesson', entityId: 'LES-2', externalCode: 'OLD', oldValue: [baseLesson], newValue: { ...baseLesson, teacher: 'Updated' } },
+        { action: 'DEACTIVATE', entityType: 'Lesson', entityId: 'LES-OLD', externalCode: 'OLD', partOfReplacement: true, oldValue: baseLesson, newValue: null },
+        { action: 'UNENROLL', entityType: 'Enrollment', entityId: 'ENR-1', externalCode: 'REMOVED', oldValue: {}, newValue: {} },
+      ],
+      conflicts: [
+        { code: 'COURSE_DATA_CONFLICT', kind: 'subject', externalCode: 'OLD', offeringId: 'OFF-1', stored: { name: 'Old' }, imported: { name: 'New' } },
+        { code: 'COURSE_DATA_CONFLICT', kind: 'lesson', externalCode: 'OLD', offeringId: 'OFF-1', stored: [baseLesson], imported: baseLesson },
+      ],
+    });
+    expect(diff.newSubjects).toHaveLength(1);
+    expect(diff.newLessons).toHaveLength(1);
+    expect(diff.changedLessons).toHaveLength(1);
+    expect(diff.removedEnrollments).toHaveLength(1);
+    expect(diff.conflictsBySubject).toHaveLength(1);
+    expect(diff.conflictsBySubject[0].conflicts).toHaveLength(2);
+  });
+
   it('round-trips the fallback schedule including a subject without lessons', () => {
     const exported = exportSchedule(fallbackSchedule);
     const validation = validateScheduleImport(exported, 14);

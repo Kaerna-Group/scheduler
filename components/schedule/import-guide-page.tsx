@@ -5,16 +5,20 @@ import {
 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
+import { AdminLink } from '@/components/admin/admin-link';
+import { SemesterSelect } from '@/components/schedule/semester-select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { ImportDiffEditor } from '@/components/schedule/import-diff-editor';
 import { useSchedule } from '@/hooks/use-schedule';
 import { usePreferences } from '@/hooks/use-preferences';
 import { buildLlmImportPrompt, scheduleImportExample } from '@/lib/schedule/import-guide';
 import { exportSchedule, validateScheduleImport } from '@/lib/schedule/import';
 import { getStoredEditToken, importPersonalSchedule, storeEditToken } from '@/lib/schedule/repository';
 import { getScheduleSyncStatus } from '@/lib/schedule/sync-status';
+import type { ImportPlanResponse, SharedConflictResolution } from '@/lib/schedule/types';
 
 const rules = [
   ['Response format', 'Plain JSON only. No Markdown blocks, comments, explanations, or extra text.'],
@@ -57,19 +61,42 @@ function safeFilename(value: string) {
 
 export function ImportGuidePage() {
   const { hasPendingChanges } = usePreferences();
-  const { schedule, setSchedule, selectedUser, selectUser, source, loading, error, refresh, remoteConfigured, lastSync, online } = useSchedule();
+  const { schedule, setSchedule, selectedUser, selectUser, selectedSemesterId, selectSemester, source, loading, error, refresh, remoteConfigured, lastSync, online } = useSchedule();
   const fileInput = useRef<HTMLInputElement>(null);
   const exported = useMemo(() => exportSchedule(schedule), [schedule]);
   const prompt = useMemo(() => buildLlmImportPrompt(schedule.semester.id, schedule.semester.weeksCount), [schedule.semester.id, schedule.semester.weeksCount]);
+  const semesterExample = useMemo(() => ({ ...scheduleImportExample, semesterId: schedule.semester.id }), [schedule.semester.id]);
   const [token, setToken] = useState(() => getStoredEditToken(schedule.user.slug));
   const [importText, setImportText] = useState(() => JSON.stringify(scheduleImportExample, null, 2));
   const [mode, setMode] = useState<'merge' | 'replace'>('merge');
-  const [allowSharedUpdates, setAllowSharedUpdates] = useState(false);
+  const [sharedConflictResolutions, setSharedConflictResolutions] = useState<Record<string, SharedConflictResolution>>({});
+  const [preview, setPreview] = useState<ImportPlanResponse | null>(null);
   const [message, setMessage] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const operationSequence = useRef(0);
   const selectedUserName = schedule.users.find((user) => user.slug === selectedUser)?.displayName ?? schedule.user.displayName;
+  const archived = schedule.semesters?.find((semester) => semester.id === schedule.semester.id)?.archived ?? false;
+  const importedSubjectNames = useMemo(() => {
+    const currentNames = Object.fromEntries(schedule.subjects.flatMap((subject) =>
+      subject.externalCode ? [[subject.externalCode, subject.name]] : [],
+    ));
+    try {
+      const parsed = JSON.parse(importText) as { subjects?: Array<{ externalCode?: unknown; name?: unknown }> };
+      return {
+        ...currentNames,
+        ...Object.fromEntries((parsed.subjects ?? []).flatMap((subject) =>
+          typeof subject.externalCode === 'string' && typeof subject.name === 'string' ? [[subject.externalCode, subject.name]] : [],
+        )),
+      };
+    } catch {
+      return currentNames;
+    }
+  }, [importText, schedule.subjects]);
+  const unresolvedConflictCount = preview
+    ? new Set((preview.conflicts ?? []).filter((conflict) => !sharedConflictResolutions[conflict.externalCode]).map((conflict) => conflict.externalCode)).size
+    : 0;
   const dataSyncStatus = getScheduleSyncStatus({
     online,
     remoteConfigured,
@@ -79,7 +106,21 @@ export function ImportGuidePage() {
     hasPendingChanges,
   });
 
-  useEffect(() => setToken(getStoredEditToken(schedule.user.slug)), [schedule.user.slug]);
+  useEffect(() => {
+    operationSequence.current += 1;
+    setToken(getStoredEditToken(schedule.user.slug));
+    setPreview(null);
+    setSharedConflictResolutions({});
+    setBusy(false);
+  }, [schedule.revision, schedule.user.slug, schedule.semester.id]);
+
+  useEffect(() => {
+    setImportText(JSON.stringify(semesterExample, null, 2));
+    setPreview(null);
+    setSharedConflictResolutions({});
+    setErrors([]);
+    setMessage('');
+  }, [semesterExample]);
 
   const rememberToken = (value: string) => {
     setToken(value);
@@ -90,6 +131,10 @@ export function ImportGuidePage() {
     setMessage('');
     try {
       const result = validateScheduleImport(JSON.parse(importText), schedule.semester.weeksCount);
+      if (result.value && result.value.semesterId !== schedule.semester.id) {
+        setErrors([`Select semester ${result.value.semesterId} first, or correct semesterId in the JSON.`]);
+        return undefined;
+      }
       setErrors(result.errors);
       return result.value;
     } catch {
@@ -98,7 +143,8 @@ export function ImportGuidePage() {
     }
   };
 
-  const previewOrImport = async (dryRun: boolean) => {
+  const previewOrImport = async (dryRun: boolean, resolutions = sharedConflictResolutions) => {
+    if (archived) { setErrors(['This semester is archived and read-only. Select an active semester to import.']); return; }
     const value = parseImport();
     if (!value) return;
     if (!remoteConfigured) {
@@ -114,6 +160,7 @@ export function ImportGuidePage() {
       return;
     }
 
+    const operation = ++operationSequence.current;
     setBusy(true);
     try {
       const response = await importPersonalSchedule({
@@ -122,24 +169,60 @@ export function ImportGuidePage() {
         schedule: value,
         mode,
         baseRevision: schedule.revision,
-        allowSharedUpdates,
+        sharedConflictResolutions: resolutions,
         dryRun,
       });
+      if (operationSequence.current !== operation) return;
       setErrors([]);
       if (response.schedule) setSchedule(response.schedule);
-      setMessage(dryRun
-        ? `Validation succeeded. Planned changes: ${Array.isArray(response.plan) ? response.plan.length : 0}. No data has been written.`
-        : `Import completed. Revision ${response.revision}.`);
+      if (dryRun) {
+        setPreview(response);
+        const unresolved = new Set((response.conflicts ?? []).filter((conflict) => !resolutions[conflict.externalCode]).map((conflict) => conflict.externalCode)).size;
+        setMessage(unresolved
+          ? `Preview ready. Resolve ${unresolved} shared course conflict${unresolved === 1 ? '' : 's'} before importing.`
+          : `Preview ready. Planned changes: ${response.plan.length}. No data has been written.`);
+      } else {
+        setPreview(null);
+        setSharedConflictResolutions({});
+        setMessage(`Import completed. Revision ${response.revision}.`);
+      }
       if (!dryRun) await refresh();
     } catch (importError) {
+      if (operationSequence.current !== operation) return;
+      setPreview(null);
+      setMessage('');
       const details = importError && typeof importError === 'object' && 'details' in importError ? (importError as { details?: unknown }).details : undefined;
       setErrors([
         importError instanceof Error ? importError.message : 'Could not complete the import.',
         ...(Array.isArray(details) ? details.map((item) => typeof item === 'string' ? item : JSON.stringify(item)) : []),
       ]);
     } finally {
-      setBusy(false);
+      if (operationSequence.current === operation) setBusy(false);
     }
+  };
+
+  const invalidatePreview = () => {
+    operationSequence.current += 1;
+    setBusy(false);
+    setPreview(null);
+    setSharedConflictResolutions({});
+    setMessage('');
+  };
+
+  const changeImportText = (value: string) => {
+    setImportText(value);
+    invalidatePreview();
+  };
+
+  const changeMode = (nextMode: 'merge' | 'replace') => {
+    setMode(nextMode);
+    invalidatePreview();
+  };
+
+  const resolveSharedConflict = (externalCode: string, resolution: SharedConflictResolution) => {
+    const next = { ...sharedConflictResolutions, [externalCode]: resolution };
+    setSharedConflictResolutions(next);
+    void previewOrImport(true, next);
   };
 
   const copyPrompt = async () => {
@@ -150,7 +233,7 @@ export function ImportGuidePage() {
 
   const loadFile = async (file?: File) => {
     if (!file) return;
-    setImportText(await file.text());
+    changeImportText(await file.text());
     setErrors([]);
     setMessage(`Loaded ${file.name} into the editor.`);
   };
@@ -165,6 +248,7 @@ export function ImportGuidePage() {
       <header className="relative border-b border-border/80 bg-background/90 backdrop-blur-xl">
         <div className="mx-auto flex max-w-[1360px] flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-7 lg:px-10 xl:py-5">
           <a href="#/" className="inline-flex h-10 items-center gap-2 rounded-full px-2 text-sm font-semibold text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" /> Back to schedule</a>
+          <div className="flex flex-wrap items-center gap-2"><SemesterSelect schedule={schedule} value={selectedSemesterId} onChange={selectSemester} />
           <Select value={selectedUser} onValueChange={(value) => value && selectUser(value)}>
             <SelectTrigger aria-label="Import user" className="h-10 min-w-[210px] rounded-full border-border bg-card/80 px-3.5 text-xs font-semibold text-foreground shadow-none xl:h-11 xl:min-w-[240px] xl:text-sm">
               <UserRound className="size-3.5" />
@@ -174,6 +258,8 @@ export function ImportGuidePage() {
               {schedule.users.map((user) => <SelectItem key={user.id} value={user.slug} className="min-h-10 rounded-xl px-3 text-sm focus:bg-muted">{user.displayName}</SelectItem>)}
             </SelectContent>
           </Select>
+          </div>
+          <AdminLink user={schedule.users.find((user) => user.slug === selectedUser)} />
           <Badge variant="secondary" className="h-8 rounded-full border-0 bg-secondary px-3 text-[10px] font-bold uppercase tracking-[0.08em] text-secondary-foreground">JSON schema v1</Badge>
         </div>
       </header>
@@ -183,11 +269,12 @@ export function ImportGuidePage() {
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-accent">The only editing workflow</p>
             <h1 className="mt-2 max-w-3xl text-4xl font-semibold tracking-[-0.055em] text-foreground sm:text-5xl">Schedule import</h1>
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-muted-foreground">Paste prepared JSON or upload a file. Validate it safely before importing.</p>
+            <p className="mt-4 max-w-2xl text-sm leading-7 text-muted-foreground">Paste prepared JSON, preview the exact backend diff, resolve shared conflicts per course, and then apply it.</p>
           </div>
           <div className="text-right text-xs leading-6 text-muted-foreground"><div>{schedule.semester.title} · {schedule.semester.weeksCount} weeks</div><output aria-live="polite">{dataSyncStatus.label} · revision {schedule.revision}</output></div>
         </div>
 
+        {archived && <div className="mt-6 rounded-[16px] border border-border bg-secondary p-4 text-sm text-muted-foreground">Archived semester — read-only. Existing data can be viewed and exported, but not imported or changed.</div>}
         <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1.45fr)_minmax(330px,.75fr)] xl:gap-8">
           <section className="rounded-[26px] border border-border bg-card/80 p-4 shadow-[0_16px_55px_rgb(var(--theme-shadow-color)/6%)] sm:p-6 xl:p-7">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -195,7 +282,7 @@ export function ImportGuidePage() {
               <div className="flex flex-wrap gap-2">
                 <input ref={fileInput} type="file" accept="application/json,.json" className="hidden" onChange={(event) => loadFile(event.target.files?.[0])} />
                 <Button variant="outline" onClick={() => fileInput.current?.click()} className="h-9 rounded-xl"><Upload className="size-3.5" /> Open file</Button>
-                <Button variant="outline" onClick={() => setImportText(JSON.stringify(exported, null, 2))} className="h-9 rounded-xl">Current JSON</Button>
+                <Button variant="outline" onClick={() => changeImportText(JSON.stringify(exported, null, 2))} className="h-9 rounded-xl">Current JSON</Button>
               </div>
             </div>
 
@@ -208,21 +295,21 @@ export function ImportGuidePage() {
             </label>
 
             <div className="mt-4 grid gap-2 sm:grid-cols-2">
-              <button onClick={() => setMode('merge')} className={`rounded-[15px] border p-3 text-left transition ${mode === 'merge' ? 'border-ring bg-warning-soft' : 'border-border bg-background'}`}><div className="text-xs font-bold text-foreground">Merge</div><div className="mt-1 text-[11px] leading-5 text-muted-foreground">Add or update the listed courses without removing others.</div></button>
-              <button onClick={() => setMode('replace')} className={`rounded-[15px] border p-3 text-left transition ${mode === 'replace' ? 'border-ring bg-warning-soft' : 'border-border bg-background'}`}><div className="text-xs font-bold text-foreground">Replace my enrollments</div><div className="mt-1 text-[11px] leading-5 text-muted-foreground">Keep only the courses listed in this JSON for the user.</div></button>
+              <button onClick={() => changeMode('merge')} className={`rounded-[15px] border p-3 text-left transition ${mode === 'merge' ? 'border-ring bg-warning-soft' : 'border-border bg-background'}`}><div className="text-xs font-bold text-foreground">Merge</div><div className="mt-1 text-[11px] leading-5 text-muted-foreground">Add or update the listed courses without removing others.</div></button>
+              <button onClick={() => changeMode('replace')} className={`rounded-[15px] border p-3 text-left transition ${mode === 'replace' ? 'border-ring bg-warning-soft' : 'border-border bg-background'}`}><div className="text-xs font-bold text-foreground">Replace my enrollments</div><div className="mt-1 text-[11px] leading-5 text-muted-foreground">Keep only the courses listed in this JSON for the user.</div></button>
             </div>
 
-            <label className="mt-3 flex items-start gap-3 rounded-[14px] bg-secondary p-3 text-xs leading-5 text-muted-foreground"><input type="checkbox" checked={allowSharedUpdates} onChange={(event) => setAllowSharedUpdates(event.target.checked)} className="mt-1" /><span><strong className="text-foreground">Allow conflicting shared changes.</strong> A new group does not require this option. Enable it only to replace a rule that conflicts with stored data.</span></label>
-
-            <Textarea value={importText} onChange={(event) => setImportText(event.target.value)} spellCheck={false} className="mt-4 min-h-[420px] rounded-[17px] bg-background font-mono text-xs leading-relaxed" aria-label="Schedule JSON" />
+            <Textarea value={importText} onChange={(event) => changeImportText(event.target.value)} spellCheck={false} className="mt-4 min-h-[420px] rounded-[17px] bg-background font-mono text-xs leading-relaxed" aria-label="Schedule JSON" />
 
             {errors.length > 0 && <div className="mt-3 rounded-[14px] bg-destructive-soft px-4 py-3 text-xs leading-relaxed text-destructive-foreground" role="alert">{errors.map((validationError, index) => <div key={`${validationError}-${index}`}>• {validationError}</div>)}</div>}
-            {message && <output className="mt-3 block rounded-[14px] bg-success-soft px-4 py-3 text-xs leading-5 text-success-foreground">{message}</output>}
+            {message && <output className={`mt-3 block rounded-[14px] px-4 py-3 text-xs leading-5 ${unresolvedConflictCount ? 'bg-warning-soft text-warning-foreground' : 'bg-success-soft text-success-foreground'}`}>{message}</output>}
             {error && <div className="mt-3 text-xs text-destructive-foreground">{error}</div>}
 
+            {preview && <ImportDiffEditor response={preview} resolutions={sharedConflictResolutions} subjectNames={importedSubjectNames} busy={busy} onResolve={resolveSharedConflict} />}
+
             <div className="mt-4 grid gap-2 sm:grid-cols-3">
-              <Button variant="outline" onClick={() => previewOrImport(true)} disabled={busy} className="h-11 rounded-[14px]"><FileJson2 className="size-4" /> Validate</Button>
-              <Button onClick={() => previewOrImport(false)} disabled={busy || !remoteConfigured || !online} className="h-11 rounded-[14px]"><Upload className="size-4" /> Import</Button>
+              <Button variant="outline" onClick={() => previewOrImport(true)} disabled={busy || archived} className="h-11 rounded-[14px]"><FileJson2 className="size-4" /> Preview diff</Button>
+              <Button onClick={() => previewOrImport(false)} disabled={busy || archived || !remoteConfigured || !online || !preview || unresolvedConflictCount > 0 || preview.revision !== schedule.revision} className="h-11 rounded-[14px]"><Upload className="size-4" /> Apply reviewed import</Button>
               <Button variant="outline" onClick={() => downloadJson(`schedule-${safeFilename(schedule.user.displayName)}.json`, exported)} className="h-11 rounded-[14px]"><Download className="size-4" /> Export</Button>
             </div>
             <Button variant="ghost" onClick={refresh} disabled={loading || !remoteConfigured || !online} className="mt-2 w-full rounded-xl text-xs"><RefreshCw className={loading ? 'size-3.5 animate-spin' : 'size-3.5'} /> Refresh data before import</Button>
@@ -237,7 +324,7 @@ export function ImportGuidePage() {
 
             <section className="rounded-[24px] border border-border bg-card/75 p-5">
               <h2 className="text-sm font-bold text-foreground">Safe workflow</h2>
-              <ol className="mt-4 space-y-3 text-xs leading-5 text-muted-foreground">{['Select the correct user.', 'Enter the personal edit token.', 'Paste the JSON and click Validate.', 'Review errors or the change plan.', 'Only then click Import.'].map((step, index) => <li key={step} className="flex gap-3"><span className="grid size-6 shrink-0 place-items-center rounded-full bg-secondary text-[10px] font-bold text-foreground">{index + 1}</span><span>{step}</span></li>)}</ol>
+              <ol className="mt-4 space-y-3 text-xs leading-5 text-muted-foreground">{['Select the correct user.', 'Enter the personal edit token.', 'Paste the JSON and preview the diff.', 'Resolve every shared conflict per course.', 'Apply the reviewed import.'].map((step, index) => <li key={step} className="flex gap-3"><span className="grid size-6 shrink-0 place-items-center rounded-full bg-secondary text-[10px] font-bold text-foreground">{index + 1}</span><span>{step}</span></li>)}</ol>
             </section>
 
             <section className="rounded-[24px] border border-warning/35 bg-warning-soft p-5"><div className="flex gap-3"><ShieldAlert className="mt-0.5 size-5 shrink-0 text-warning" /><div><h2 className="text-sm font-bold text-warning-foreground">Shared data</h2><p className="mt-2 text-xs leading-6 text-warning-foreground">Every user shares the course name and lessons for the same externalCode. New groups and non-conflicting rules are added to the offering; rules absent from the JSON are not deleted.</p></div></div></section>
@@ -271,10 +358,10 @@ export function ImportGuidePage() {
             ].map(([field, value]) => <tr key={field} className="border-b border-border"><td className="py-3 pr-4 font-mono font-semibold">{field}</td><td className="py-3 font-mono leading-5">{value}</td></tr>)}</tbody></table></div>
           </div>
 
-          <div className="rounded-[24px] border border-border bg-primary p-5 text-primary-foreground sm:p-6"><div className="flex items-center justify-between gap-3"><h2 className="text-xl font-semibold tracking-[-0.035em]">JSON example</h2><CheckCircle2 className="size-5 text-success" /></div><pre className="mt-5 max-h-[500px] overflow-auto rounded-[16px] bg-primary-foreground/10 p-4 text-[11px] leading-5 text-primary-foreground/75"><code>{JSON.stringify(scheduleImportExample, null, 2)}</code></pre></div>
+          <div className="rounded-[24px] border border-border bg-primary p-5 text-primary-foreground sm:p-6"><div className="flex items-center justify-between gap-3"><h2 className="text-xl font-semibold tracking-[-0.035em]">JSON example</h2><CheckCircle2 className="size-5 text-success" /></div><pre className="mt-5 max-h-[500px] overflow-auto rounded-[16px] bg-primary-foreground/10 p-4 text-[11px] leading-5 text-primary-foreground/75"><code>{JSON.stringify(semesterExample, null, 2)}</code></pre></div>
         </section>
 
-        <section className="mt-8 rounded-[24px] border border-destructive/35 bg-destructive-soft p-5 sm:p-6"><div className="flex gap-4"><AlertTriangle className="mt-0.5 size-5 shrink-0 text-destructive" /><div><h2 className="text-sm font-bold text-destructive-foreground">Merge, Replace, and conflicts</h2><ul className="mt-3 space-y-2 text-xs leading-6 text-destructive-foreground"><li>• Merge does not remove the user’s other enrollments.</li><li>• Replace removes only this user’s current-semester enrollments that are absent from the JSON; shared courses and lessons are not physically deleted.</li><li>• An exact lesson match is not duplicated; extra weeks join the same rule; a new group or non-conflicting lesson joins the offering.</li><li>• A conflict exists only when a rule for the same group, type, day, and weeks overlaps in time but contains different data. Allowing shared changes replaces only conflicting weeks.</li><li>• If the revision is stale, refresh the data and repeat validation and import.</li><li>• Validate writes nothing. The server applies a successful import atomically under a lock and records it in AuditLog.</li></ul></div></div></section>
+        <section className="mt-8 rounded-[24px] border border-destructive/35 bg-destructive-soft p-5 sm:p-6"><div className="flex gap-4"><AlertTriangle className="mt-0.5 size-5 shrink-0 text-destructive" /><div><h2 className="text-sm font-bold text-destructive-foreground">Merge, Replace, and conflicts</h2><ul className="mt-3 space-y-2 text-xs leading-6 text-destructive-foreground"><li>• Merge does not remove the user’s other enrollments.</li><li>• Replace removes only this user’s current-semester enrollments that are absent from the JSON; shared courses and lessons are not physically deleted.</li><li>• An exact lesson match is not duplicated; extra weeks join the same rule; a new group or non-conflicting lesson joins the offering.</li><li>• A conflict exists only when a rule for the same group, type, day, and weeks overlaps in time but contains different data. Each conflicting course must independently keep stored data or apply the imported version.</li><li>• If the revision is stale, refresh the data and repeat the preview and import.</li><li>• Preview writes nothing. The server applies a successful import atomically under a lock and records it in AuditLog.</li></ul></div></div></section>
       </div>
     </main>
   );

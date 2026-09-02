@@ -17,6 +17,8 @@ import {
 
 import { lockAccess } from '@/components/access/access-gate';
 import { ThemeCard } from '@/components/settings/theme-card';
+import { AdminLink } from '@/components/admin/admin-link';
+import { SemesterSelect } from '@/components/schedule/semester-select';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -74,7 +76,7 @@ function SettingsSection({ id, title, icon: Icon, children }: { id: string; titl
 export function SettingsPage() {
   const { preferences, setPreferences, resetPreferences, preferencesRevision, syncStatus, syncError, hasPendingChanges } = usePreferences();
   const { themeId } = useTheme(preferences.appearance);
-  const { schedule, selectedUser, selectUser, source, loading, error, refresh, remoteConfigured, lastSync, online } = useSchedule();
+  const { schedule, selectedUser, selectUser, selectedSemesterId, selectSemester, source, loading, error, refresh, remoteConfigured, lastSync, online } = useSchedule();
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
   const [notice, setNotice] = useState('');
   const selectedUserName = schedule.users.find((user) => user.slug === selectedUser)?.displayName ?? schedule.user.displayName;
@@ -143,7 +145,7 @@ export function SettingsPage() {
       forgetAllEditTokens();
       clearAllPreferenceCaches();
       try {
-        ['schedule_access_v1', 'scheduler_selected_user_v1', 'scheduler_selected_week_v1', 'scheduler_subject_filter_v1'].forEach((key) => localStorage.removeItem(key));
+        ['schedule_access_v1', 'scheduler_selected_user_v1', 'scheduler_selected_semester_v1', 'scheduler_selected_week_v1', 'scheduler_subject_filter_v1'].forEach((key) => localStorage.removeItem(key));
       } catch { /* storage may be unavailable */ }
       window.location.hash = '#/';
       window.location.reload();
@@ -165,7 +167,7 @@ export function SettingsPage() {
       <header className="relative border-b border-border/80 bg-background/85 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
           <a href="#/" className="inline-flex h-11 items-center gap-2 rounded-full px-3 text-sm font-semibold text-foreground hover:bg-muted"><ArrowLeft className="size-4" /> Back to schedule</a>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground"><UserRound className="size-4" /><span className="font-semibold text-foreground">{selectedUserName}</span></div>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground"><AdminLink user={schedule.users.find((user) => user.slug === selectedUser)} /><UserRound className="size-4" /><span className="font-semibold text-foreground">{selectedUserName}</span></div>
         </div>
       </header>
 
@@ -208,6 +210,7 @@ export function SettingsPage() {
 
             <SettingsSection id="sync" title="User and synchronization" icon={RefreshCw}>
               <SettingRow title="Default schedule"><Select value={selectedUser} onValueChange={(value) => value && selectUser(value)}><SelectTrigger className="h-10 min-w-52 bg-background"><SelectValue>{selectedUserName}</SelectValue></SelectTrigger><SelectContent>{schedule.users.map((user) => <SelectItem key={user.id} value={user.slug}>{user.displayName}</SelectItem>)}</SelectContent></Select></SettingRow>
+              <SettingRow title="Selected semester"><SemesterSelect schedule={schedule} value={selectedSemesterId} onChange={selectSemester} /></SettingRow>
               <SettingRow title="Synchronization status"><output aria-live="polite" className={`rounded-full px-3 py-2 text-xs font-semibold ${dataSyncStatus.kind === 'current' ? 'bg-success-soft text-success-foreground' : dataSyncStatus.kind === 'unavailable' ? 'bg-destructive-soft text-destructive-foreground' : 'bg-warning-soft text-warning-foreground'}`}>{dataSyncStatus.label}</output></SettingRow>
               <SettingRow title="Data source"><span className="rounded-full bg-secondary px-3 py-2 text-xs font-semibold">{sourceLabel}</span></SettingRow>
               <SettingRow title="Last synchronization" description={`Revision ${schedule.revision}`}><span className="text-xs font-medium text-muted-foreground">{formattedSync}</span></SettingRow>

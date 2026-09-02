@@ -16,6 +16,9 @@ function doGet(event) {
     if (action === 'schedule') {
       return buildUserSchedule_(parameters.user, parameters.semester);
     }
+    if (action === 'changes') {
+      return buildScheduleHistory_(parameters.user, parameters.semester, parameters.limit);
+    }
     throw schedulerError_('UNKNOWN_ACTION', 'Unknown GET action: ' + action);
   });
 }
@@ -36,6 +39,17 @@ function doPost(event) {
     if (body.action === 'importSchedule') return importPersonalSchedule_(body, false);
     if (body.action === 'updateEnrollments') return updateEnrollments_(body);
     if (body.action === 'updatePreferences') return updatePreferences_(body);
+    if (body.action === 'undoLastImport') return undoLastImport_(body);
+    if (body.action === 'createSemester') return createSemester_(body);
+    if (body.action === 'setCurrentSemester') return setCurrentSemester_(body);
+    if (body.action === 'archiveSemester') return archiveSemester_(body);
+    if (body.action === 'adminOverview') return adminOverview_(body);
+    if (body.action === 'adminUserDetails') return adminUserDetails_(body);
+    if (body.action === 'adminAuditLog') return adminAuditLog_(body);
+    if (body.action === 'adminCreateUser') return adminCreateUser_(body);
+    if (body.action === 'adminUpdateUser') return adminUpdateUser_(body);
+    if (body.action === 'adminSetUserActive') return adminSetUserActive_(body);
+    if (body.action === 'adminRotateUserToken') return adminRotateUserToken_(body);
     throw schedulerError_('UNKNOWN_ACTION', 'Unknown POST action: ' + body.action);
   });
 }

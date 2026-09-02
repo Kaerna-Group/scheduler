@@ -94,9 +94,34 @@ const group3 = { type: 'group', group: 3, day: 'thursday', startTime: '13:30', e
   const conflicts = [];
   const correctedGroup4 = { ...group3, group: 4, startTime: '15:30', endTime: '16:50', teacher: 'Another Teacher' };
   syncLessons_(database, offering, [correctedGroup4], actor, true, changes, conflicts);
-  assert.equal(conflicts.length, 0);
+  assert.equal(conflicts.length, 1);
+  assert.equal(conflicts[0].resolution, 'apply');
   assert.equal(database.Lessons.find((lesson) => lesson.lesson_id === 'LES-GROUP-4').active, 'no');
   assert.equal(database.Lessons.filter((lesson) => lesson.active === 'yes' && lesson.type === 'group').length, 1);
+}
+
+{
+  const database = makeDatabase();
+  const changes = [];
+  const conflicts = [];
+  const correctedGroup4 = { ...group3, group: 4, startTime: '15:30', endTime: '16:50', teacher: 'Another Teacher' };
+  syncLessons_(database, offering, [correctedGroup4], actor, 'keep', changes, conflicts);
+  assert.equal(conflicts.length, 1);
+  assert.equal(conflicts[0].resolution, 'keep');
+  assert.equal(database.Lessons.find((lesson) => lesson.lesson_id === 'LES-GROUP-4').active, 'yes');
+  assert.equal(changes.length, 0, 'keeping stored data must not write the conflicting imported rule');
+}
+
+{
+  const database = makeDatabase();
+  const changes = [];
+  const conflicts = [];
+  const correctedGroup4 = { ...group3, group: 4, startTime: '15:30', endTime: '16:50', teacher: 'Another Teacher' };
+  syncLessons_(database, offering, [correctedGroup4], actor, 'apply', changes, conflicts);
+  assert.equal(conflicts.length, 1);
+  assert.equal(conflicts[0].resolution, 'apply');
+  assert.equal(changes.filter((change) => change.entityType === 'Lesson' && change.action === 'REPLACE').length, 1);
+  assert.equal(changes.filter((change) => change.partOfReplacement).length, 1);
 }
 
 console.log('Apps Script additive import tests passed');

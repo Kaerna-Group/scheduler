@@ -45,11 +45,13 @@ export function parseApiResponse<T>(value: unknown): T {
   return response.data;
 }
 
-export async function postApi<T>(body: Record<string, unknown>) {
+export async function postApi<T>(body: Record<string, unknown>, signal?: AbortSignal) {
   const response = await fetch(createApiUrl(), {
     method: 'POST',
+    cache: 'no-store',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify(body),
+    signal,
   });
   if (!response.ok) throw new Error(`The API is unavailable: HTTP ${response.status}.`);
   return parseApiResponse<T>(await response.json());

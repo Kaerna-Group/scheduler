@@ -5,6 +5,6 @@ export const users: ScheduleUser[] = [
     id: 'U001',
     slug: 'ermolz',
     displayName: 'Ermolz',
-    role: 'editor',
+    role: 'admin',
   },
 ];

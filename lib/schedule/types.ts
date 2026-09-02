@@ -50,10 +50,17 @@ export interface Semester {
   startDate: string;
 }
 
+export interface SemesterSummary extends Semester {
+  archived: boolean;
+  current: boolean;
+}
+
 export interface UserSchedule {
   users: ScheduleUser[];
   user: ScheduleUser;
   semester: Semester;
+  semesters?: SemesterSummary[];
+  currentSemesterId?: string;
   subjects: Subject[];
   lessons: Lesson[];
   revision: number;
@@ -88,6 +95,35 @@ export interface ScheduleImportV1 {
   schemaVersion: 1;
   semesterId: string;
   subjects: ImportSubject[];
+}
+
+export type SharedConflictResolution = 'keep' | 'apply';
+
+export interface ImportPlanChange {
+  action: string;
+  entityType: string;
+  entityId: string;
+  externalCode?: string;
+  partOfReplacement?: boolean;
+  oldValue: unknown;
+  newValue: unknown;
+}
+
+export interface ImportSharedConflict {
+  code: 'COURSE_DATA_CONFLICT';
+  kind?: 'subject' | 'lesson';
+  externalCode: string;
+  offeringId: string;
+  resolution?: SharedConflictResolution;
+  stored: unknown;
+  imported: unknown;
+}
+
+export interface ImportPlanResponse {
+  schedule?: UserSchedule;
+  revision: number;
+  plan: ImportPlanChange[];
+  conflicts?: ImportSharedConflict[];
 }
 
 export type ScheduleSource = 'remote' | 'cache' | 'fallback';

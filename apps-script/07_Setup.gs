@@ -35,6 +35,11 @@ function upgradeDatabaseSchema_(database) {
   const schemaRow = database.Meta.find(function (row) { return row.key === 'schema_version'; });
   const previousSchemaVersion = schemaRow ? String(schemaRow.value || '') : '';
   const preferenceRowsAdded = ensureUserPreferenceRows_(database);
+  const currentSemesterRow = database.Meta.find(function (row) { return row.key === 'current_semester_id'; });
+  const currentSemesterAdded = !currentSemesterRow;
+  if (currentSemesterAdded && database.Semesters.length) {
+    database.Meta.push({ key: 'current_semester_id', value: getCurrentSemesterId_(database) });
+  }
   const schemaChanged = previousSchemaVersion !== SCHEDULER_CONFIG.schemaVersion;
   const changedTables = [];
 
@@ -43,9 +48,10 @@ function upgradeDatabaseSchema_(database) {
     else database.Meta.push({ key: 'schema_version', value: SCHEDULER_CONFIG.schemaVersion });
     changedTables.push('Meta');
   }
+  if (currentSemesterAdded && database.Semesters.length && changedTables.indexOf('Meta') === -1) changedTables.push('Meta');
   if (preferenceRowsAdded) changedTables.push('UserPreferences');
 
-  if (schemaChanged || preferenceRowsAdded) {
+  if (schemaChanged || preferenceRowsAdded || (currentSemesterAdded && database.Semesters.length)) {
     database.AuditLog.push({
       timestamp: nowIso_(),
       actor_user_id: 'SYSTEM',
@@ -57,6 +63,7 @@ function upgradeDatabaseSchema_(database) {
       new_value: JSON.stringify({
         schemaVersion: SCHEDULER_CONFIG.schemaVersion,
         preferenceRowsAdded: preferenceRowsAdded,
+        currentSemesterAdded: currentSemesterAdded && database.Semesters.length > 0,
       }),
       revision: String(getRevisionFromDb_(database)),
     });
@@ -68,6 +75,7 @@ function upgradeDatabaseSchema_(database) {
     previousSchemaVersion: previousSchemaVersion || null,
     schemaVersion: SCHEDULER_CONFIG.schemaVersion,
     preferenceRowsAdded: preferenceRowsAdded,
+    currentSemesterAdded: currentSemesterAdded && database.Semesters.length > 0,
     changedTables: changedTables,
   };
 }
@@ -94,7 +102,7 @@ function createSeedDatabase_(ermolzToken) {
   Object.keys(SCHEDULER_SHEETS).forEach(function (name) { database[name] = []; });
 
   database.Users.push({
-    user_id: 'U001', slug: 'ermolz', display_name: 'Ermolz', role: 'editor',
+    user_id: 'U001', slug: 'ermolz', display_name: 'Ermolz', role: 'admin',
     edit_token_hash: hashEditToken_(ermolzToken), active: 'yes',
   });
   database.UserPreferences.push(createDefaultPreferenceRow_('U001'));
@@ -173,6 +181,7 @@ function createSeedDatabase_(ermolzToken) {
 
   database.Meta.push({ key: 'schema_version', value: SCHEDULER_CONFIG.schemaVersion });
   database.Meta.push({ key: SCHEDULER_CONFIG.revisionKey, value: '1' });
+  database.Meta.push({ key: 'current_semester_id', value: 'SEM-2026-FALL' });
   database.AuditLog.push({
     timestamp: nowIso_(), actor_user_id: 'SYSTEM', actor_slug: 'system', action: 'SEED',
     entity_type: 'Database', entity_id: 'SEM-2026-FALL', old_value: '',
@@ -189,25 +198,12 @@ function range_(from, to) {
 }
 
 function createSchedulerUser(displayName, slug, role) {
-  const safeSlug = String(slug || '').trim().toLowerCase();
-  const safeName = String(displayName || '').trim();
-  const safeRole = role || 'user';
-  if (!/^[a-z0-9-]{2,40}$/.test(safeSlug)) throw new Error('slug must contain 2–40 lowercase letters, digits, or hyphens.');
-  if (!safeName) throw new Error('displayName is required.');
-  if (ALLOWED_ROLES.indexOf(safeRole) === -1) throw new Error('role must be user, editor, or admin.');
-
   const lock = LockService.getScriptLock();
   lock.waitLock(SCHEDULER_CONFIG.lockTimeoutMs);
   try {
     const database = loadDatabase_();
-    if (database.Users.some(function (user) { return user.slug === safeSlug; })) throw new Error('User slug already exists.');
-    const token = generateEditToken_();
-    const user = {
-      user_id: newId_('USR'), slug: safeSlug, display_name: safeName, role: safeRole,
-      edit_token_hash: hashEditToken_(token), active: 'yes',
-    };
-    database.Users.push(user);
-    database.UserPreferences.push(createDefaultPreferenceRow_(user.user_id));
+    const created = createUserRecord_(database, displayName, slug, role);
+    const user = created.user;
     const revision = getRevisionFromDb_(database) + 1;
     setRevisionInDb_(database, revision);
     appendAuditChanges_(database, { user_id: 'SYSTEM', slug: 'system' }, [{
@@ -215,7 +211,7 @@ function createSchedulerUser(displayName, slug, role) {
       newValue: { user_id: user.user_id, slug: user.slug, display_name: user.display_name, role: user.role, active: user.active },
     }], revision);
     persistDatabase_(database, ['Users', 'UserPreferences', 'Meta', 'AuditLog']);
-    return { user: publicUser_(user), editToken: token, warning: 'Copy this token now; only its hash is stored.' };
+    return { user: publicUser_(user), editToken: created.editToken, warning: 'Copy this token now; only its hash is stored.' };
   } finally {
     lock.releaseLock();
   }
@@ -228,8 +224,7 @@ function rotateSchedulerEditToken(slug) {
     const database = loadDatabase_();
     const user = database.Users.find(function (row) { return row.slug === slug && isActive_(row.active); });
     if (!user) throw new Error('User not found.');
-    const token = generateEditToken_();
-    user.edit_token_hash = hashEditToken_(token);
+    const token = rotateUserTokenRecord_(user);
     const revision = getRevisionFromDb_(database) + 1;
     setRevisionInDb_(database, revision);
     appendAuditChanges_(database, { user_id: 'SYSTEM', slug: 'system' }, [{
@@ -237,37 +232,6 @@ function rotateSchedulerEditToken(slug) {
     }], revision);
     persistDatabase_(database, ['Users', 'Meta', 'AuditLog']);
     return { user: publicUser_(user), editToken: token, warning: 'The previous token is now invalid.' };
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-function migrateTymofiiUserToErmolz() {
-  const lock = LockService.getScriptLock();
-  lock.waitLock(SCHEDULER_CONFIG.lockTimeoutMs);
-  try {
-    const database = loadDatabase_();
-    const existing = database.Users.find(function (row) { return row.slug === 'ermolz'; });
-    const legacy = database.Users.find(function (row) { return row.slug === 'tymofii'; });
-    if (!legacy) {
-      if (existing) return { migrated: false, user: publicUser_(existing), message: 'User already uses slug ermolz.' };
-      throw new Error('User with slug tymofii was not found.');
-    }
-    if (existing && existing.user_id !== legacy.user_id) throw new Error('Slug ermolz is already used by another user.');
-
-    const previous = Object.assign({}, legacy);
-    legacy.slug = 'ermolz';
-    if (legacy.display_name === 'Tymofii') legacy.display_name = 'Ermolz';
-    const revision = getRevisionFromDb_(database) + 1;
-    setRevisionInDb_(database, revision);
-    appendAuditChanges_(database, { user_id: 'SYSTEM', slug: 'system' }, [{
-      action: 'UPDATE', entityType: 'User', entityId: legacy.user_id,
-      oldValue: { slug: previous.slug, display_name: previous.display_name },
-      newValue: { slug: legacy.slug, display_name: legacy.display_name },
-    }], revision);
-    assertDatabaseIntegrity_(database);
-    persistDatabase_(database, ['Users', 'Meta', 'AuditLog']);
-    return { migrated: true, user: publicUser_(legacy), revision: revision };
   } finally {
     lock.releaseLock();
   }

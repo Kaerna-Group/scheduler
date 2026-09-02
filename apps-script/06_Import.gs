@@ -15,7 +15,7 @@ function findOrCreateGroup_(database, offering, groupNumber, actor, changes) {
     active: 'yes',
   };
   database.Groups.push(group);
-  changes.push({ action: 'CREATE', entityType: 'Group', entityId: group.group_id, oldValue: null, newValue: group });
+  changes.push({ action: 'CREATE', entityType: 'Group', entityId: group.group_id, externalCode: offering.external_code, oldValue: null, newValue: group });
   return group;
 }
 
@@ -37,8 +37,8 @@ function createOfferingFromImport_(database, semester, subjectInput, actor, chan
   };
   database.Subjects.push(subject);
   database.Offerings.push(offering);
-  changes.push({ action: 'CREATE', entityType: 'Subject', entityId: subject.subject_id, oldValue: null, newValue: subject });
-  changes.push({ action: 'CREATE', entityType: 'Offering', entityId: offering.offering_id, oldValue: null, newValue: offering });
+  changes.push({ action: 'CREATE', entityType: 'Subject', entityId: subject.subject_id, externalCode: offering.external_code, oldValue: null, newValue: subject });
+  changes.push({ action: 'CREATE', entityType: 'Offering', entityId: offering.offering_id, externalCode: offering.external_code, oldValue: null, newValue: offering });
   return offering;
 }
 
@@ -123,7 +123,7 @@ function lessonRulesConflict_(stored, imported) {
     lessonTimesOverlap_(stored.canonical, imported);
 }
 
-function appendImportedLesson_(database, offering, lessonInput, actor, changes) {
+function appendImportedLesson_(database, offering, lessonInput, actor, changes, replacedLessons) {
   requireRole_(actor, ['editor', 'admin']);
   const lesson = {
     lesson_id: newId_('LES'),
@@ -146,12 +146,14 @@ function appendImportedLesson_(database, offering, lessonInput, actor, changes) 
     database.LessonGroups.push({ lesson_id: lesson.lesson_id, group_id: group.group_id });
   }
   changes.push({
-    action: 'CREATE', entityType: 'Lesson', entityId: lesson.lesson_id,
-    oldValue: null, newValue: lessonInput,
+    action: replacedLessons && replacedLessons.length ? 'REPLACE' : 'CREATE', entityType: 'Lesson', entityId: lesson.lesson_id,
+    externalCode: offering.external_code,
+    oldValue: replacedLessons && replacedLessons.length ? replacedLessons.map(function (item) { return item.canonical; }) : null,
+    newValue: lessonInput,
   });
 }
 
-function removeConflictingLessonWeeks_(database, stored, imported, changes) {
+function removeConflictingLessonWeeks_(database, offering, stored, imported, changes) {
   const removeEveryWeek = imported.id && imported.id === stored.lessonId;
   const removedWeeks = removeEveryWeek
     ? stored.canonical.weeks
@@ -165,12 +167,14 @@ function removeConflictingLessonWeeks_(database, stored, imported, changes) {
     action: remainingWeeks.length ? 'UPDATE' : 'DEACTIVATE',
     entityType: 'Lesson',
     entityId: stored.lessonId,
+    externalCode: offering.external_code,
+    partOfReplacement: true,
     oldValue: stored.canonical,
     newValue: remainingWeeks.length ? Object.assign({}, stored.canonical, { weeks: remainingWeeks }) : null,
   });
 }
 
-function syncLessons_(database, offering, importedLessons, actor, allowSharedUpdates, changes, conflicts) {
+function syncLessons_(database, offering, importedLessons, actor, sharedResolution, changes, conflicts) {
   if (!importedLessons || !importedLessons.length) return;
 
   importedLessons.map(normalizeImportedLessonForSync_).forEach(function (incoming) {
@@ -190,6 +194,7 @@ function syncLessons_(database, offering, importedLessons, actor, allowSharedUpd
         });
         changes.push({
           action: 'EXTEND_WEEKS', entityType: 'Lesson', entityId: sameRule.lessonId,
+          externalCode: offering.external_code,
           oldValue: sameRule.canonical,
           newValue: Object.assign({}, sameRule.canonical, {
             weeks: sameRule.canonical.weeks.concat(missingWeeks).sort(function (a, b) { return a - b; }),
@@ -200,24 +205,28 @@ function syncLessons_(database, offering, importedLessons, actor, allowSharedUpd
     }
 
     const incompatible = stored.filter(function (item) { return lessonRulesConflict_(item, incoming); });
-    if (incompatible.length && !allowSharedUpdates) {
+    const applySharedUpdate = sharedResolution === true || sharedResolution === 'apply';
+    const keepStored = sharedResolution === 'keep';
+    if (incompatible.length) {
       conflicts.push({
         code: 'COURSE_DATA_CONFLICT',
+        kind: 'lesson',
         externalCode: offering.external_code,
         offeringId: offering.offering_id,
+        resolution: applySharedUpdate ? 'apply' : (keepStored ? 'keep' : undefined),
         stored: incompatible.map(function (item) { return item.canonical; }),
         imported: incoming,
       });
-      return;
+      if (!applySharedUpdate) return;
     }
 
     if (incompatible.length) {
       requireRole_(actor, ['editor', 'admin']);
       incompatible.forEach(function (item) {
-        removeConflictingLessonWeeks_(database, item, incoming, changes);
+        removeConflictingLessonWeeks_(database, offering, item, incoming, changes);
       });
     }
-    appendImportedLesson_(database, offering, incoming, actor, changes);
+    appendImportedLesson_(database, offering, incoming, actor, changes, incompatible);
   });
 }
 
@@ -235,7 +244,7 @@ function upsertEnrollment_(database, user, offering, group, changes) {
       active: 'yes',
     };
     database.Enrollments.push(enrollment);
-    changes.push({ action: 'ENROLL', entityType: 'Enrollment', entityId: enrollment.enrollment_id, oldValue: null, newValue: enrollment });
+    changes.push({ action: 'ENROLL', entityType: 'Enrollment', entityId: enrollment.enrollment_id, externalCode: offering.external_code, oldValue: null, newValue: enrollment });
     return;
   }
 
@@ -243,7 +252,7 @@ function upsertEnrollment_(database, user, offering, group, changes) {
   enrollment.group_id = nextGroupId;
   enrollment.active = 'yes';
   if (JSON.stringify(previous) !== JSON.stringify(enrollment)) {
-    changes.push({ action: 'UPDATE', entityType: 'Enrollment', entityId: enrollment.enrollment_id, oldValue: previous, newValue: enrollment });
+    changes.push({ action: 'UPDATE', entityType: 'Enrollment', entityId: enrollment.enrollment_id, externalCode: offering.external_code, oldValue: previous, newValue: enrollment });
   }
 }
 
@@ -263,7 +272,16 @@ function appendAuditChanges_(database, actor, changes, revision) {
   });
 }
 
-function planPersonalImport_(database, body) {
+function sharedResolutionFor_(body, externalCode) {
+  const resolutions = body.sharedConflictResolutions;
+  if (resolutions && typeof resolutions === 'object') {
+    const resolution = resolutions[externalCode];
+    if (resolution === 'apply' || resolution === 'keep') return resolution;
+  }
+  return undefined;
+}
+
+function planPersonalImport_(database, body, allowUnresolvedConflicts) {
   const actor = authenticateEditToken_(database, body.editToken);
   const targetUser = resolveWritableUser_(database, actor, body.userSlug);
   const baseRevision = Number(body.baseRevision);
@@ -283,7 +301,6 @@ function planPersonalImport_(database, body) {
   validateImportPayload_(body.payload, semester);
 
   const mode = body.importMode === 'replace' ? 'replace' : 'merge';
-  const allowSharedUpdates = body.allowSharedUpdates === true;
   const changes = [];
   const conflicts = [];
   const importedOfferingIds = [];
@@ -295,30 +312,34 @@ function planPersonalImport_(database, body) {
     });
     if (!offering) offering = createOfferingFromImport_(database, semester, subjectInput, actor, changes);
     importedOfferingIds.push(offering.offering_id);
+    const sharedResolution = sharedResolutionFor_(body, code);
 
     const subject = database.Subjects.find(function (row) { return row.subject_id === offering.subject_id; });
     const incomingName = String(subjectInput.name).trim();
-    if (subject.name !== incomingName && !allowSharedUpdates) {
+    if (subject.name !== incomingName) {
       conflicts.push({
-        code: 'COURSE_DATA_CONFLICT', externalCode: code, offeringId: offering.offering_id,
+        code: 'COURSE_DATA_CONFLICT', kind: 'subject', externalCode: code, offeringId: offering.offering_id,
+        resolution: sharedResolution,
         stored: { name: subject.name }, imported: { name: incomingName },
       });
-    } else if (subject.name !== incomingName) {
-      requireRole_(actor, ['editor', 'admin']);
-      const previous = Object.assign({}, subject);
-      subject.name = incomingName;
-      subject.short_name = String(subjectInput.shortName || incomingName).trim();
-      if (subjectInput.color) subject.color = String(subjectInput.color);
-      changes.push({ action: 'UPDATE', entityType: 'Subject', entityId: subject.subject_id, oldValue: previous, newValue: subject });
+      if (sharedResolution === 'apply') {
+        requireRole_(actor, ['editor', 'admin']);
+        const previous = Object.assign({}, subject);
+        subject.name = incomingName;
+        subject.short_name = String(subjectInput.shortName || incomingName).trim();
+        if (subjectInput.color) subject.color = String(subjectInput.color);
+        changes.push({ action: 'UPDATE', entityType: 'Subject', entityId: subject.subject_id, externalCode: code, oldValue: previous, newValue: subject });
+      }
     }
 
     const group = findOrCreateGroup_(database, offering, subjectInput.selectedGroup, actor, changes);
-    syncLessons_(database, offering, subjectInput.lessons || [], actor, allowSharedUpdates, changes, conflicts);
+    syncLessons_(database, offering, subjectInput.lessons || [], actor, sharedResolution, changes, conflicts);
     upsertEnrollment_(database, targetUser, offering, group, changes);
   });
 
-  if (conflicts.length) {
-    throw schedulerError_('COURSE_DATA_CONFLICT', 'Imported shared course data differs from stored data.', conflicts);
+  const unresolvedConflicts = conflicts.filter(function (conflict) { return !conflict.resolution; });
+  if (unresolvedConflicts.length && !allowUnresolvedConflicts) {
+    throw schedulerError_('COURSE_DATA_CONFLICT', 'Imported shared course data differs from stored data.', unresolvedConflicts);
   }
 
   if (mode === 'replace') {
@@ -328,21 +349,22 @@ function planPersonalImport_(database, body) {
           isActive_(enrollment.active) && importedOfferingIds.indexOf(enrollment.offering_id) === -1) {
         const previous = Object.assign({}, enrollment);
         enrollment.active = 'no';
-        changes.push({ action: 'UNENROLL', entityType: 'Enrollment', entityId: enrollment.enrollment_id, oldValue: previous, newValue: enrollment });
+        changes.push({ action: 'UNENROLL', entityType: 'Enrollment', entityId: enrollment.enrollment_id, externalCode: offering.external_code, oldValue: previous, newValue: enrollment });
       }
     });
   }
 
   assertDatabaseIntegrity_(database);
-  return { database: database, actor: actor, targetUser: targetUser, semester: semester, changes: changes, currentRevision: currentRevision };
+  return { database: database, actor: actor, targetUser: targetUser, semester: semester, changes: changes, conflicts: conflicts, currentRevision: currentRevision };
 }
 
 function importPersonalSchedule_(body, dryRun) {
   if (dryRun) {
-    const planned = planPersonalImport_(loadDatabase_(), body);
+    const planned = planPersonalImport_(loadDatabase_(), body, true);
     return {
       revision: planned.currentRevision,
       plan: planned.changes,
+      conflicts: planned.conflicts,
       user: publicUser_(planned.targetUser),
     };
   }
@@ -350,7 +372,7 @@ function importPersonalSchedule_(body, dryRun) {
   const lock = LockService.getScriptLock();
   lock.waitLock(SCHEDULER_CONFIG.lockTimeoutMs);
   try {
-    const planned = planPersonalImport_(loadDatabase_(), body);
+    const planned = planPersonalImport_(loadDatabase_(), body, false);
     if (!planned.changes.length) {
       return {
         revision: planned.currentRevision,
@@ -361,6 +383,23 @@ function importPersonalSchedule_(body, dryRun) {
     const nextRevision = planned.currentRevision + 1;
     setRevisionInDb_(planned.database, nextRevision);
     appendAuditChanges_(planned.database, planned.actor, planned.changes, nextRevision);
+    planned.database.AuditLog.push({
+      timestamp: nowIso_(),
+      actor_user_id: planned.actor.user_id,
+      actor_slug: planned.actor.slug,
+      action: 'IMPORT',
+      entity_type: 'Import',
+      entity_id: 'IMPORT-' + nextRevision,
+      old_value: JSON.stringify({ baseRevision: planned.currentRevision }),
+      new_value: JSON.stringify({
+        revision: nextRevision,
+        targetUserSlug: planned.targetUser.slug,
+        semesterId: planned.semester.semester_id,
+        importMode: body.importMode === 'replace' ? 'replace' : 'merge',
+        changeCount: planned.changes.length,
+      }),
+      revision: String(nextRevision),
+    });
     persistDatabase_(planned.database, [
       'Subjects', 'Offerings', 'Groups', 'Enrollments', 'Lessons',
       'LessonGroups', 'LessonWeeks', 'Meta', 'AuditLog',

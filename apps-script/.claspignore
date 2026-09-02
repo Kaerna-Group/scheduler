@@ -1,0 +1,4 @@
+# Patterns are relative to rootDir (dist), not to this file.
+**/**
+!Code.gs
+!appsscript.json

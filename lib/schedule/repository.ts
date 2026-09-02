@@ -1,11 +1,13 @@
 import { fallbackSchedule } from '@/data/fallback-schedule';
 import { createApiUrl, parseApiResponse, postApi } from '@/lib/api/client';
-import type { ScheduleImportV1, ScheduleUser, UserSchedule } from '@/lib/schedule/types';
+import type { ImportPlanResponse, ScheduleImportV1, ScheduleUser, SharedConflictResolution, UserSchedule } from '@/lib/schedule/types';
 
 const CACHE_PREFIX = 'scheduler_cache_v1:';
 const USERS_CACHE_KEY = 'scheduler_users_v1';
 const EDIT_TOKEN_PREFIX = 'scheduler_edit_token_v1:';
+export const EDIT_TOKEN_EVENT = 'scheduler-edit-token-changed';
 const LAST_SYNC_PREFIX = 'scheduler_last_sync_v1:';
+const HISTORY_CACHE_PREFIX = 'scheduler_history_v1:';
 
 function cacheKey(userSlug: string, semesterId: string) {
   return `${CACHE_PREFIX}${userSlug}:${semesterId}`;
@@ -123,6 +125,7 @@ export function storeEditToken(userSlug: string, token: string) {
   } catch {
     // The token stays only in component state when storage is unavailable.
   }
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(EDIT_TOKEN_EVENT));
 }
 
 export function readLastSync(userSlug: string, semesterId: string) {
@@ -134,7 +137,7 @@ export function clearScheduleCache() {
     const keys: string[] = [];
     for (let index = 0; index < localStorage.length; index += 1) {
       const key = localStorage.key(index);
-      if (key?.startsWith(CACHE_PREFIX) || key?.startsWith(LAST_SYNC_PREFIX) || key === USERS_CACHE_KEY) keys.push(key);
+      if (key?.startsWith(CACHE_PREFIX) || key?.startsWith(LAST_SYNC_PREFIX) || key?.startsWith(HISTORY_CACHE_PREFIX) || key === USERS_CACHE_KEY) keys.push(key);
     }
     keys.forEach((key) => localStorage.removeItem(key));
   } catch {
@@ -153,13 +156,14 @@ export function forgetAllEditTokens() {
   } catch {
     // Tokens may already be inaccessible.
   }
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(EDIT_TOKEN_EVENT));
 }
 
-export async function fetchSchedule(userSlug: string, semesterId: string, signal?: AbortSignal) {
+export async function fetchSchedule(userSlug: string, semesterId?: string, signal?: AbortSignal) {
   const url = createApiUrl();
   url.searchParams.set('action', 'schedule');
   url.searchParams.set('user', userSlug);
-  url.searchParams.set('semester', semesterId);
+  if (semesterId) url.searchParams.set('semester', semesterId);
   const response = await fetch(url, { signal, cache: 'no-store' });
   if (!response.ok) throw new Error(`The API is unavailable: HTTP ${response.status}.`);
   const schedule = parseApiResponse<UserSchedule>(await response.json());
@@ -174,16 +178,16 @@ export async function importPersonalSchedule(args: {
   schedule: ScheduleImportV1;
   mode: 'merge' | 'replace';
   baseRevision: number;
-  allowSharedUpdates: boolean;
+  sharedConflictResolutions?: Record<string, SharedConflictResolution>;
   dryRun?: boolean;
 }) {
-  return postApi<{ schedule?: UserSchedule; revision: number; plan: unknown }>({
+  return postApi<ImportPlanResponse>({
     action: args.dryRun ? 'previewImport' : 'importSchedule',
     userSlug: args.userSlug,
     editToken: args.token,
     importMode: args.mode,
     baseRevision: args.baseRevision,
-    allowSharedUpdates: args.allowSharedUpdates,
+    sharedConflictResolutions: args.sharedConflictResolutions ?? {},
     payload: args.schedule,
   });
 }
@@ -194,6 +198,7 @@ export async function updateEnrollments(args: {
   semesterId: string;
   enrollments: Array<{ externalCode: string; selectedGroup?: number }>;
   baseRevision: number;
+  signal?: AbortSignal;
 }) {
   return postApi<{ schedule: UserSchedule; revision: number }>({
     action: 'updateEnrollments',
@@ -202,5 +207,5 @@ export async function updateEnrollments(args: {
     semesterId: args.semesterId,
     enrollments: args.enrollments,
     baseRevision: args.baseRevision,
-  });
+  }, args.signal);
 }

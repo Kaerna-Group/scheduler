@@ -6,9 +6,9 @@ function buildUserSchedule_(userSlug, semesterId, providedDatabase) {
   const user = activeUsers.find(function (row) { return row.slug === userSlug; });
   if (!user) throw schedulerError_('USER_NOT_FOUND', 'Unknown or inactive user: ' + userSlug);
 
-  const targetSemesterId = semesterId || SCHEDULER_CONFIG.defaultSemesterId;
+  const targetSemesterId = semesterId || getCurrentSemesterId_(database);
   const semester = database.Semesters.find(function (row) {
-    return row.semester_id === targetSemesterId && isActive_(row.active);
+    return row.semester_id === targetSemesterId;
   });
   if (!semester) throw schedulerError_('SEMESTER_NOT_FOUND', 'Unknown or inactive semester: ' + targetSemesterId);
 
@@ -47,7 +47,6 @@ function buildUserSchedule_(userSlug, semesterId, providedDatabase) {
     };
   }).sort(function (a, b) { return a.name.localeCompare(b.name); });
 
-  const subjectIds = new Set(subjects.map(function (subject) { return subject.id; }));
   const lessonWeeks = {};
   database.LessonWeeks.forEach(function (row) {
     if (!lessonWeeks[row.lesson_id]) lessonWeeks[row.lesson_id] = [];
@@ -62,7 +61,7 @@ function buildUserSchedule_(userSlug, semesterId, providedDatabase) {
   const lessons = database.Lessons.filter(function (lesson) {
     if (!isActive_(lesson.active)) return false;
     const offering = offeringById[lesson.offering_id];
-    if (!offering || !subjectIds.has(offering.subject_id)) return false;
+    if (!offering || offering.semester_id !== semester.semester_id || !enrollmentByOffering[offering.offering_id]) return false;
     const restrictedGroups = lessonGroups[lesson.lesson_id] || [];
     if (!restrictedGroups.length) return true;
     const enrollment = enrollmentByOffering[lesson.offering_id];
@@ -97,6 +96,8 @@ function buildUserSchedule_(userSlug, semesterId, providedDatabase) {
       startDate: semester.start_date,
       weeksCount: Number(semester.weeks_count),
     },
+    semesters: publicSemesters_(database),
+    currentSemesterId: getCurrentSemesterId_(database),
     subjects: subjects,
     lessons: lessons,
     revision: getRevisionFromDb_(database),

@@ -33,13 +33,10 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: Build
+      - name: Check
         env:
           VITE_SCHEDULE_API_URL: ${{ vars.SCHEDULE_API_URL }}
-        run: npm run build
-
-      - name: Test
-        run: npm test
+        run: npm run check
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
