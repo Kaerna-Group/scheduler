@@ -134,6 +134,148 @@ function savedPreferences(
 }
 
 describe('shareable schedule state', () => {
+  it('opens every course occurrence from a catalog link and copies a link that works with empty device storage', async () => {
+    savedPreferences({ showSaturday: false, showEmptyDays: false });
+    open('#/courses?user=ermolz&semester=SEM-2026-FALL&week=14');
+    await ready();
+    const card = screen.getByRole('link', {
+      name: 'View Electronics and Digital Electronics',
+    });
+    expect(card.textContent).toContain('18 classes this semester');
+    fireEvent.click(card);
+    await screen.findByRole('heading', {
+      name: 'Electronics and Digital Electronics',
+      level: 1,
+    });
+    expect(route()).toMatchObject({
+      view: 'subjects',
+      week: 14,
+      subject: '564966',
+    });
+    const lectures = within(screen.getByRole('region', { name: 'Lectures' }));
+    const groups = within(
+      screen.getByRole('region', { name: 'Group classes' }),
+    );
+    expect(lectures.getAllByRole('listitem')).toHaveLength(9);
+    expect(groups.getAllByRole('listitem')).toHaveLength(9);
+    expect(lectures.getByText('19 Sept 2026')).toBeTruthy();
+    expect(lectures.getByText('14 Nov 2026')).toBeTruthy();
+    expect(groups.getByText('23 Sept 2026')).toBeTruthy();
+    expect(groups.getByText('18 Nov 2026')).toBeTruthy();
+    const first = within(lectures.getAllByRole('listitem')[0]);
+    for (const text of [
+      'Saturday · Week 3',
+      '08:30',
+      '09:50',
+      'Ya. I. Vozniuk',
+      '1-310',
+      'On campus',
+    ])
+      expect(first.getByText(text)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Next week' })).toBeNull();
+    expect(screen.queryByRole('navigation', { name: 'Weekdays' })).toBeNull();
+    await copyLink();
+    await screen.findByText('Link copied');
+    const copied = copy.mock.calls[0][0] as string;
+    expect(parseScheduleLocation(copied)).toMatchObject({
+      view: 'subjects',
+      user: 'ermolz',
+      semester: 'SEM-2026-FALL',
+      subject: '564966',
+    });
+    cleanup();
+    localStorage.clear();
+    sessionStorage.clear();
+    open(new URL(copied).hash);
+    await ready();
+    expect(
+      within(screen.getByRole('region', { name: 'Lectures' })).getAllByRole(
+        'listitem',
+      ),
+    ).toHaveLength(9);
+    fireEvent.click(screen.getByRole('link', { name: 'Back to all courses' }));
+    await screen.findByRole('link', {
+      name: 'View Electronics and Digital Electronics',
+    });
+    expect(route()).toMatchObject({
+      view: 'subjects',
+      user: 'ermolz',
+      semester: 'SEM-2026-FALL',
+      week: 14,
+    });
+    expect(route()?.subject).toBeUndefined();
+    expect(backend.calls.every((call) => call.method === 'GET')).toBe(true);
+  });
+
+  it('opens the course filter as a full detail view using only the linked user’s personal group, including offline', async () => {
+    await member();
+    open('#/courses?user=linked-user&semester=SEM-2026-FALL&week=14');
+    await ready();
+    fireEvent.click(screen.getByRole('combobox', { name: 'Course filter' }));
+    await selectOption('Scrum Fundamentals');
+    expect(
+      screen.getByRole('heading', {
+        name: 'Scrum Framework Fundamentals',
+        level: 1,
+      }),
+    ).toBeTruthy();
+    const groups = within(
+      screen.getByRole('region', { name: 'Group classes' }),
+    );
+    expect(groups.getAllByRole('listitem')).toHaveLength(7);
+    expect(groups.getAllByText('Group 2')).toHaveLength(7);
+    expect(groups.queryByText('Group 1')).toBeNull();
+    expect(groups.queryByText('Group 3')).toBeNull();
+    expect(groups.getAllByText('Online')).toHaveLength(7);
+    const hash = window.location.hash;
+    cleanup();
+    Object.defineProperty(navigator, 'onLine', {
+      configurable: true,
+      value: false,
+    });
+    backend.calls.length = 0;
+    open(hash);
+    expect(
+      within(
+        screen.getByRole('region', { name: 'Group classes' }),
+      ).getAllByRole('listitem'),
+    ).toHaveLength(7);
+    expect(backend.calls).toHaveLength(0);
+  });
+
+  it('shows empty and missing courses explicitly and recovers through the catalog', async () => {
+    open(
+      '#/courses?user=ermolz&semester=SEM-2026-FALL&subject=LOCAL-QUALIFICATION',
+    );
+    await ready();
+    expect(
+      screen.getByRole('heading', { name: 'Qualification Project', level: 1 }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText('No classes scheduled for this course this semester.'),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByRole('region', { name: 'Lectures' })).queryAllByRole(
+        'listitem',
+      ),
+    ).toHaveLength(0);
+    act(() =>
+      navigateSchedule(
+        window.location.origin +
+          '/scheduler/#/courses?user=ermolz&semester=SEM-2026-FALL&subject=UNKNOWN',
+      ),
+    );
+    expect(
+      screen.getByRole('heading', { name: 'Course not found', level: 1 }),
+    ).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'Lectures' })).toBeNull();
+    expect(route()?.subject).toBe('UNKNOWN');
+    fireEvent.click(screen.getByRole('button', { name: 'Show all courses' }));
+    expect(
+      screen.getByRole('link', { name: 'View Qualification Project' }),
+    ).toBeTruthy();
+  });
+
   it('retains the latest linked profile when navigation removes URL selection', async () => {
     await member();
     const { result, rerender } = renderHook(
@@ -273,7 +415,7 @@ describe('shareable schedule state', () => {
       backend.calls
         .filter((call) => call.action === 'schedule')
         .map((call) => call.body.user),
-    ).toEqual(['linked-user']);
+    ).toEqual(['linked-user', 'ermolz']);
     expect(localStorage.getItem('scheduler_selected_user_v1')).toBe(
       'linked-user',
     );
@@ -391,7 +533,13 @@ describe('shareable schedule state', () => {
       week: 6,
       subject: '565095',
     });
-    expect(screen.getByRole('heading', { name: '1 course' })).toBeTruthy();
+    expect(
+      screen.getByRole('heading', {
+        name: 'Scrum Framework Fundamentals',
+        level: 1,
+      }),
+    ).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Lectures' })).toBeTruthy();
     act(() => window.history.back());
     await waitFor(() => expect(window.location.href).toBe(six));
     chosenWeek(6);
@@ -573,7 +721,7 @@ describe('shareable schedule state', () => {
             : input instanceof URL
               ? input.href
               : input.url;
-        if (url.includes('user=ermolz')) {
+        if (url.includes('user=ermolz') && !release) {
           oldSignal = init?.signal;
           return new Promise<Response>((resolve) => {
             release = () => resolve(response);

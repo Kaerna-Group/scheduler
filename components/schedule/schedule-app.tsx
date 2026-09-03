@@ -12,11 +12,15 @@ import { NextLessonBanner } from '@/components/schedule/next-lesson-banner';
 import { SyncChangesNotice } from '@/components/schedule/sync-changes-notice';
 import { CalendarExportDialog, type CalendarExportSnapshot } from '@/components/schedule/calendar-export-dialog';
 import { SemesterSelect } from '@/components/schedule/semester-select';
+import { CourseCatalog } from '@/components/schedule/course-catalog';
+import { CourseDetail } from '@/components/schedule/course-detail';
+import { LessonParticipants } from '@/components/schedule/lesson-participants';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { useSchedule } from '@/hooks/use-schedule';
+import { useLessonParticipants } from '@/hooks/use-lesson-participants';
 import { useAppLocation } from '@/hooks/use-app-location';
 import { useScheduleView } from '@/hooks/use-schedule-view';
 import { usePreferences } from '@/hooks/use-preferences';
@@ -24,6 +28,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { getScheduleSyncStatus } from '@/lib/schedule/sync-status';
 import { parseScheduleLocation } from '@/lib/schedule/location';
 import type { Lesson, Subject, WeekDay } from '@/lib/schedule/types';
+import type { LessonParticipants as Participants, ParticipantsForLesson } from '@/lib/schedule/participants';
 import {
   dayLabels, dayLabelsShort, dayOrder, getConflictIds, getCurrentWeekDay,
   getLessonsForDay, getWeekDates,
@@ -32,7 +37,7 @@ import { cn } from '@/lib/utils';
 
 const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-function LessonCard({ lesson, subject, hasConflict, compact }: { lesson: Lesson; subject: Subject; hasConflict: boolean; compact: boolean }) {
+function LessonCard({ lesson, subject, hasConflict, compact, participants, ownerId }: { lesson: Lesson; subject: Subject; hasConflict: boolean; compact: boolean; participants: Participants; ownerId: string }) {
   const place = lesson.format === 'online'
     ? 'Online'
     : lesson.format === 'hybrid'
@@ -72,13 +77,15 @@ function LessonCard({ lesson, subject, hasConflict, compact }: { lesson: Lesson;
           </div>
         </div>
       </div>
+      <LessonParticipants participants={participants} ownerId={ownerId} />
     </article>
   );
 }
 
-function DaySection({ sourceLessons, sourceSubjects, day, date, week, subjectId, conflictIds, compact = false, cardCompact = false }: {
+function DaySection({ sourceLessons, sourceSubjects, day, date, week, subjectId, conflictIds, participantsFor, ownerId, compact = false, cardCompact = false }: {
   sourceLessons: Lesson[]; sourceSubjects: Subject[]; day: WeekDay; date: Date; week: number;
   subjectId: string; conflictIds: Set<string>; compact?: boolean; cardCompact?: boolean;
+  participantsFor: ParticipantsForLesson; ownerId: string;
 }) {
   const dayLessons = getLessonsForDay(sourceLessons, week, day, subjectId);
   if (!dayLessons.length && compact) return null;
@@ -101,6 +108,8 @@ function DaySection({ sourceLessons, sourceSubjects, day, date, week, subjectId,
               subject={sourceSubjects.find((item) => item.id === lesson.subjectId)!}
               hasConflict={conflictIds.has(lesson.id)}
               compact={cardCompact}
+              participants={participantsFor(lesson, week)}
+              ownerId={ownerId}
             />
           ))}
         </div>
@@ -108,33 +117,6 @@ function DaySection({ sourceLessons, sourceSubjects, day, date, week, subjectId,
         <div className="rounded-[22px] border border-dashed border-border px-5 py-8 text-center text-sm text-muted-foreground">Free day — no classes</div>
       )}
     </section>
-  );
-}
-
-function SubjectCatalog({ subjects, lessons }: { subjects: Subject[]; lessons: Lesson[] }) {
-  return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      {subjects.map((subject) => {
-        const subjectLessons = lessons.filter((lesson) => lesson.subjectId === subject.id);
-        return (
-          <article key={subject.id} className="relative overflow-hidden rounded-[22px] border border-border bg-card/75 p-5 shadow-[0_8px_30px_rgb(var(--theme-shadow-color)/4%)]">
-            <span className="absolute inset-y-5 left-0 w-[3px] rounded-r-full" style={{ backgroundColor: subject.color }} />
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">{subject.externalCode ?? 'No code'}</div>
-                <h2 className="mt-2 text-[16px] font-semibold leading-snug tracking-[-0.025em] text-foreground">{subject.name}</h2>
-              </div>
-              {subject.selectedGroup !== undefined && (
-                <Badge variant="secondary" className="shrink-0 rounded-full border-0 bg-secondary text-[10px]">Group {subject.selectedGroup}</Badge>
-              )}
-            </div>
-            <div className="mt-4 text-xs text-muted-foreground">
-              {subjectLessons.length ? `${subjectLessons.length} schedule rules` : 'Course without recurring classes'}
-            </div>
-          </article>
-        );
-      })}
-    </div>
   );
 }
 
@@ -148,8 +130,9 @@ export function ScheduleApp() {
     refresh, remoteConfigured, lastSync, online, syncChanges, dismissSyncChanges,
   } = useSchedule({ userSlug: route?.user, semesterId: route?.semester, fromLink: route?.explicit });
   const { lessons, subjects, semester } = schedule;
+  const participantsFor = useLessonParticipants({ schedule, ready: selectionReady && !loading && source !== 'fallback', online, remoteConfigured, cached: source !== 'remote' || Boolean(error) });
   const currentDay = getCurrentWeekDay();
-  const { week, view, subjectId, chooseWeek, setView, setSubjectId, selectUser, selectSemester, link, notice, missingSubject, canShare } = useScheduleView({
+  const { week, view, subjectId, chooseWeek, setView, setSubjectId, courseLink, selectUser, selectSemester, link, notice, missingSubject, canShare } = useScheduleView({
     href, route, schedule, selectedUser, selectedSemesterId, selectionReady, loading, error, preferences,
   });
   const [copyNotice, setCopyNotice] = useState('');
@@ -175,10 +158,10 @@ export function ScheduleApp() {
   const activeLessons = useMemo(() => lessons.filter((lesson) => lesson.weeks.includes(week) && (subjectId === 'all' || lesson.subjectId === subjectId)), [lessons, week, subjectId]);
   const conflictCount = activeLessons.filter((lesson) => conflictIds.has(lesson.id)).length;
   const selectedUserName = schedule.users.find((user) => user.slug === selectedUser)?.displayName ?? schedule.user.displayName;
+  const selectedSubject = subjects.find((subject) => subject.id === subjectId);
   const selectedSubjectName = subjectId === 'all'
     ? 'All courses'
-    : (subjects.find((subject) => subject.id === subjectId)?.shortName ?? (loading ? 'Loading course…' : 'Course not found'));
-  const filteredSubjects = subjectId === 'all' ? subjects : subjects.filter((subject) => subject.id === subjectId);
+    : (selectedSubject?.shortName ?? (loading ? 'Loading course…' : 'Course not found'));
   const visibleDays = view === 'today' ? (currentDay ? [currentDay] : []) : dayOrder.filter((day) => day !== 'saturday' || preferences.schedule.showSaturday || activeLessons.some((lesson) => lesson.day === 'saturday'));
   const visibleLessonCount = view === 'today' && currentDay
     ? activeLessons.filter((lesson) => lesson.day === currentDay).length
@@ -252,14 +235,20 @@ export function ScheduleApp() {
         <NextLessonBanner schedule={schedule} source={source} loading={loading} ready={selectionReady} online={online} backendError={Boolean(error)} />
         <section className="rounded-[26px] border border-border bg-card/70 p-4 shadow-[0_16px_55px_rgb(var(--theme-shadow-color)/5%)] backdrop-blur-sm sm:p-5 xl:p-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
+            {view === 'subjects' ? (
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Full semester</div>
+                <div className="mt-0.5 text-xl font-semibold tracking-[-0.04em]">{semester.title}</div>
+                <p className="mt-1 text-xs text-muted-foreground">Weeks 1–{semester.weeksCount} · Times in Europe/Kyiv</p>
+              </div>
+            ) : <div className="flex items-center gap-2">
               <Button aria-label="Previous week" variant="outline" size="icon-lg" disabled={week === 1} onClick={() => chooseWeek(Math.max(1, week - 1))} className="rounded-full border-border bg-card shadow-none"><ArrowLeft /></Button>
               <div className="min-w-[132px] text-center">
                 <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Academic</div>
                 <div className="mt-0.5 text-xl font-semibold tracking-[-0.04em] text-foreground">Week {week}</div>
               </div>
               <Button aria-label="Next week" variant="outline" size="icon-lg" disabled={week === semester.weeksCount} onClick={() => chooseWeek(Math.min(semester.weeksCount, week + 1))} className="rounded-full border-border bg-card shadow-none"><ArrowRight /></Button>
-            </div>
+            </div>}
 
             <Select value={subjectId} onValueChange={(value) => value && setSubjectId(value)}>
               <SelectTrigger aria-label="Course filter" className="h-10 min-w-[230px] flex-1 rounded-full border-border bg-card px-4 text-xs font-semibold text-foreground shadow-none sm:max-w-[320px] xl:h-11 xl:max-w-[360px] xl:text-sm">
@@ -273,14 +262,14 @@ export function ScheduleApp() {
             </Select>
           </div>
 
-          <div className="mt-5 grid grid-cols-7 gap-1.5 sm:gap-2">
+          {view !== 'subjects' && <div className="mt-5 grid grid-cols-7 gap-1.5 sm:gap-2">
             {Array.from({ length: semester.weeksCount }, (_, index) => index + 1).map((value) => (
               <button key={value} aria-label={`Week ${value}`} aria-current={week === value ? 'true' : undefined} onClick={() => chooseWeek(value)} className={cn(
                 'h-9 rounded-[12px] text-xs font-semibold transition sm:h-10',
                 week === value ? 'bg-accent text-accent-foreground shadow-[0_6px_16px_rgb(var(--theme-shadow-color)/18%)]' : 'bg-secondary text-muted-foreground hover:bg-muted hover:text-foreground',
               )}>{value}</button>
             ))}
-          </div>
+          </div>}
 
           <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-[11px] text-muted-foreground">
             <output className="flex items-center gap-1.5" aria-live="polite">
@@ -305,24 +294,27 @@ export function ScheduleApp() {
           {copyNotice && <output className="mt-3 block text-xs text-success">{copyNotice}</output>}
         </section>
 
-        <nav className="sticky top-3 z-20 mt-4 flex gap-2 overflow-x-auto rounded-[18px] border border-border bg-background/90 p-2 shadow-sm backdrop-blur-xl md:hidden" aria-label="Weekdays">
+        {view !== 'subjects' && <nav className="sticky top-3 z-20 mt-4 flex gap-2 overflow-x-auto rounded-[18px] border border-border bg-background/90 p-2 shadow-sm backdrop-blur-xl md:hidden" aria-label="Weekdays">
           {visibleDays.map((day) => (
             <button key={day} onClick={() => document.getElementById(day)?.scrollIntoView({ block: 'start' })} className="flex min-w-[48px] flex-1 flex-col items-center rounded-[12px] px-2 py-2 text-xs font-semibold text-muted-foreground hover:bg-card hover:text-foreground">
               {dayLabelsShort[day]}<span className="mt-0.5 text-[10px] font-medium text-muted-foreground">{dates[day].getDate()}</span>
             </button>
           ))}
-        </nav>
+        </nav>}
 
-        <div className="mt-7 grid gap-7 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-10 2xl:grid-cols-[minmax(0,1fr)_340px]">
-          <div>
+        <div className={cn('mt-7 grid gap-7 lg:gap-10', view !== 'subjects' && 'lg:grid-cols-[minmax(0,1fr)_320px] 2xl:grid-cols-[minmax(0,1fr)_340px]')}>
+          <div className="min-w-0">
+            {view === 'subjects' && subjectId !== 'all' && (
+              <a href={courseLink('all')} className="mb-4 inline-flex min-h-10 items-center gap-2 rounded-full px-2 text-sm font-semibold text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"><ArrowLeft aria-hidden="true" className="size-4" />Back to all courses</a>
+            )}
             <div className="mb-6 flex items-end justify-between gap-4">
-              <div>
+              <div className="min-w-0">
                 <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{view === 'today' ? 'Today' : view === 'subjects' ? 'By course' : 'Week overview'}</p>
-                <h1 className="mt-1.5 text-3xl font-semibold tracking-[-0.055em] text-foreground sm:text-[38px]">
-                  {view === 'subjects' ? `${filteredSubjects.length} ${filteredSubjects.length === 1 ? 'course' : 'courses'}` : `${visibleLessonCount} classes`}
+                <h1 className="mt-1.5 break-words text-3xl font-semibold tracking-[-0.055em] text-foreground sm:text-[38px]">
+                  {view === 'subjects' ? subjectId === 'all' ? `${subjects.length} ${subjects.length === 1 ? 'course' : 'courses'}` : selectedSubject?.name ?? (loading ? 'Loading course…' : 'Course not found') : `${visibleLessonCount} classes`}
                 </h1>
               </div>
-              <div className="text-right text-xs leading-relaxed text-muted-foreground">{dates.monday.getDate()} {monthNames[dates.monday.getMonth()]} — {dates.saturday.getDate()} {monthNames[dates.saturday.getMonth()]}</div>
+              {view !== 'subjects' && <div className="text-right text-xs leading-relaxed text-muted-foreground">{dates.monday.getDate()} {monthNames[dates.monday.getMonth()]} — {dates.saturday.getDate()} {monthNames[dates.saturday.getMonth()]}</div>}
             </div>
 
             {!selectionReady || (loading && subjects.length === 0) ? (
@@ -334,7 +326,9 @@ export function ScheduleApp() {
               </div>
             ) : <div className="space-y-8">
               {view === 'subjects' ? (
-                <SubjectCatalog subjects={filteredSubjects} lessons={lessons} />
+                subjectId === 'all'
+                  ? <CourseCatalog subjects={subjects} lessons={lessons} semester={semester} courseLink={courseLink} />
+                  : selectedSubject && <CourseDetail subject={selectedSubject} lessons={lessons} semester={semester} participantsFor={participantsFor} ownerId={schedule.user.id} />
               ) : visibleDays.map((day) => (
                 <DaySection
                   key={day}
@@ -347,6 +341,8 @@ export function ScheduleApp() {
                   conflictIds={conflictIds}
                   compact={!preferences.schedule.showEmptyDays}
                   cardCompact={preferences.schedule.density === 'compact'}
+                  participantsFor={participantsFor}
+                  ownerId={schedule.user.id}
                 />
               ))}
               {view !== 'subjects' && (visibleDays.length === 0 || (!preferences.schedule.showEmptyDays && visibleLessonCount === 0)) && (
@@ -357,7 +353,7 @@ export function ScheduleApp() {
             </div>}
           </div>
 
-          <aside className="space-y-4 lg:sticky lg:top-6 lg:self-start">
+          {view !== 'subjects' && <aside className="space-y-4 lg:sticky lg:top-6 lg:self-start">
             <div className="overflow-hidden rounded-[24px] bg-primary p-5 text-primary-foreground shadow-[0_18px_45px_rgb(var(--theme-shadow-color)/15%)]">
               <div className="flex items-start justify-between gap-4">
                 <div><div className="text-[10px] font-bold uppercase tracking-[0.14em] text-primary-foreground/50">This week</div><div className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{activeLessons.length} classes</div></div>
@@ -389,7 +385,7 @@ export function ScheduleApp() {
                 <div className="flex items-center gap-2.5"><Radio className="size-4" /> Hybrid format</div>
               </div>
             </div>
-          </aside>
+          </aside>}
         </div>
       </div>
       <nav className="fixed inset-x-3 bottom-3 z-40 grid grid-cols-3 rounded-[20px] border border-border bg-background/92 p-1.5 shadow-[0_14px_38px_rgb(var(--theme-shadow-color)/14%)] backdrop-blur-xl md:hidden" aria-label="Main navigation">

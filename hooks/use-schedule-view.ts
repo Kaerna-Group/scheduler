@@ -131,15 +131,20 @@ export function useScheduleView(args: {
     setNotice('');
     navigateSchedule(scheduleUrl(href, { ...linkState, ...patch }));
   }
-  const setSubjectId = (id: string) => {
+  const subjectReferenceFor = (id: string) => {
     const selected = schedule.subjects.find((item) => item.id === id);
-    navigate({
-      subject:
-        selected?.externalCode && selected.externalCode !== 'all'
-          ? selected.externalCode
-          : id,
-    });
+    return selected?.externalCode && selected.externalCode !== 'all'
+      ? selected.externalCode
+      : id;
   };
+  const setSubjectId = (id: string) =>
+    navigate({ subject: subjectReferenceFor(id) });
+  const courseLink = (id: string) =>
+    scheduleUrl(href, {
+      ...linkState,
+      view: 'subjects',
+      subject: subjectReferenceFor(id),
+    });
   const selectUser = (user: string) => navigate({ user, subject: 'all' });
   const selectSemester = (semester: string) => {
     const target = schedule.semesters?.find((item) => item.id === semester);
@@ -163,6 +168,7 @@ export function useScheduleView(args: {
     chooseWeek,
     setView,
     setSubjectId,
+    courseLink,
     selectUser,
     selectSemester,
     link,

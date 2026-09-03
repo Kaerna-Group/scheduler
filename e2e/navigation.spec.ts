@@ -48,7 +48,7 @@ test('complete path: PIN → user → week → course → settings → import', 
   await choose(page, 'Course filter', 'Electronics');
   await view(page, 'Courses');
   await expect(
-    page.getByRole('heading', { name: '1 course', exact: true }),
+    page.getByRole('region', { name: 'Lectures', exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole('heading', {

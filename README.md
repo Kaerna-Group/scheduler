@@ -87,6 +87,16 @@ Week limits are validated against the loaded semester, not a temporary fallback.
 
 URL parsing, navigation, clipboard fallback, PIN preservation, offline recovery and real frontend/Apps Script integration are covered by `tests/schedule-location.test.ts` and `tests/schedule-links-flow.test.tsx`, included in `npm test` and CI. No backend schema change is required for this feature.
 
+## Course details
+
+In **Courses**, click a course card or select a course in the filter to open its full semester schedule at `#/courses?...&subject=...`. Lectures and group classes appear separately in date/time order, with a row for each scheduled occurrence: academic week, date, time, teacher, room and format. Counts reflect actual classes across the semester, including sparse weeks and Saturdays, regardless of the previously selected week or hidden-day preferences. Dates use the same Monday-based academic weeks as the weekly view and calendar export; times remain university local time (Europe/Kyiv).
+
+**Back to all courses** clears the subject while retaining the selected user, semester and previous week. **Copy schedule link** includes that selection so the detail view can be opened on another device. Details use the existing personal `UserSchedule` and cached offline data. Courses without classes and missing linked courses have explicit empty states.
+
+When two or more users share a class, their initials appear at the bottom right of its card in Today, Week and course details. Hover, click or tap the avatars to see the names. Matches require the same course offering, semester dates, weekday, start/end times, lesson type and scheduled week; group classes also require the same group. The displayed schedule's owner is included. Matching a course name alone or merely overlapping times does not count.
+
+Participants are checked with the existing read-only schedule endpoint, at most three requests at a time. Each other user's schedule is read once per revision while the page is mounted and reused across weeks and views. These reads do not overwrite personal schedule caches, synchronization baselines or preferences. Only matching revisions are compared; canceled selections are ignored. Offline lists use available saved schedules and are labeled as cached; partial lists are labeled as incomplete. No backend or schema changes are needed.
+
 ## Changes since the previous synchronization
 
 After a successful schedule refresh, a compact notice such as **2 classes changed → View changes** appears below synchronization status when meaningful changes were found. Clicking opens a read-only diff with added, updated and removed lesson rules, exact before/after fields (weeks, time, day, room, teacher, format, type/group and course), revisions and synchronization timestamps. Course/enrollment and semester metadata changes are listed separately, including courses without lessons. The comparison covers the whole personal semester, not the selected week or course filter. One changed recurring rule counts as one class, not as fourteen calendar occurrences.
