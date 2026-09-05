@@ -1,0 +1,11 @@
+{
+  "reason": "Move this lecture from week 3 onward; preserve duration",
+  "commands": [
+    {
+      "type": "lesson.move",
+      "lessonId": "LES-SCRUM-LECTURE",
+      "startTime": "13:30",
+      "fromWeek": 3
+    }
+  ]
+}

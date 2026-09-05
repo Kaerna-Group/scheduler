@@ -19,6 +19,29 @@ interface BackendFunctions {
   buildUserSchedule_: (userSlug: string, semesterId?: string) => unknown;
   doPost: (event: { postData: { contents: string } }) => unknown;
   doGet: (event: { parameter: Record<string, string> }) => unknown;
+  setupSchedulerControl: () => unknown;
+  createSchedulerIntegration: (id: string, scopes: string[]) => unknown;
+  revokeSchedulerIntegration: (id: string) => unknown;
+}
+
+interface TestSheet {
+  getDisplayHeaders: () => string[];
+  getLastRow: () => number;
+  getMaxRows: () => number;
+  getSheetId: () => number;
+  getLastColumn: () => number;
+  getDataRange: () => { getDisplayValues: () => string[][] };
+}
+
+interface AtomicUpdateCellsRequest {
+  range: { sheetId: number };
+  rows: Array<{
+    values: Array<{ userEnteredValue: { stringValue: string } }>;
+  }>;
+}
+
+interface AtomicBatchRequest {
+  updateCells?: AtomicUpdateCellsRequest;
 }
 
 export function createTestScriptCache() {
@@ -65,6 +88,7 @@ export function createTestBackend(
   let locks = 0;
   const cache = options.cache ?? createTestScriptCache();
   const properties = new Map<string, string>();
+  let data: Database = {};
   const storage = {
     reads: [] as string[],
     writes: [] as string[],
@@ -80,6 +104,8 @@ export function createTestBackend(
     failPropertyDeleteFor: '',
     failPropertyAfterSetFor: '',
     propertyEvents: [] as string[],
+    batches: [] as unknown[],
+    loseBatchResponse: false,
   };
   const context = vm.createContext({
     console: { error() {} },
@@ -156,8 +182,15 @@ export function createTestBackend(
   vm.runInContext(source, context);
   const api = context as unknown as BackendFunctions;
   const token = 'isolated-test-admin-credential-never-valid-in-production';
-  let data = structuredClone(api.createSeedDatabase_(token));
+  data = structuredClone(api.createSeedDatabase_(token));
   const tableNames = Object.keys(data);
+  const headersByTable = vm.runInContext(
+    'Object.assign({}, SCHEDULER_SHEETS, SCHEDULER_CONTROL_SHEETS)',
+    context,
+  ) as Record<string, string[]>;
+  const tableBySheetId = new Map(
+    Object.keys(headersByTable).map((name, index) => [index + 1, name]),
+  );
   const calls: Array<{
     method: string;
     action: unknown;
@@ -166,8 +199,82 @@ export function createTestBackend(
   }> = [];
   // Keep the real database loader and persistence coordinator. Only table I/O
   // is replaced, so tests can measure reads and verify lock/flush ordering.
-  api.getSchedulerSpreadsheet_ = () => ({
-    getId: () => options.spreadsheetId ?? 'isolated-test-sheet',
+  api.getSchedulerSpreadsheet_ = () =>
+    ({
+      getId: () => options.spreadsheetId ?? 'isolated-test-sheet',
+      getSheetByName: (name: string) => {
+        const sheetId = Object.keys(headersByTable).indexOf(name) + 1;
+        if (!sheetId || !data[name]) return null;
+        const sheet: TestSheet & {
+          getRange: () => { getDisplayValues: () => string[][] };
+        } = {
+          getDisplayHeaders: () => headersByTable[name] ?? [],
+          getLastRow: () => Math.max(1, (data[name]?.length ?? 0) + 1),
+          getMaxRows: () => Math.max(1000, (data[name]?.length ?? 0) + 1),
+          getSheetId: () => sheetId,
+          getLastColumn: () => headersByTable[name].length,
+          getDataRange: () => ({
+            getDisplayValues: () => [
+              headersByTable[name],
+              ...data[name].map((row) =>
+                headersByTable[name].map((header) => row[header] ?? ''),
+              ),
+            ],
+          }),
+          getRange: () => ({
+            getDisplayValues: () => [headersByTable[name] ?? []],
+          }),
+        };
+        return sheet;
+      },
+    }) as unknown as { getId: () => string };
+  Object.assign(context, {
+    Sheets: {
+      Spreadsheets: {
+        batchUpdate: ({ requests }: { requests: AtomicBatchRequest[] }) => {
+          if (locks !== 1) throw new Error('Write outside LockService');
+          storage.batches.push(structuredClone(requests));
+          const updates = requests
+            .map((request) => request.updateCells)
+            .filter(Boolean) as AtomicUpdateCellsRequest[];
+          const names = updates.map((update) =>
+            tableBySheetId.get(update.range.sheetId),
+          );
+          const failingName = names.find(
+            (name) =>
+              name &&
+              (storage.failWriteFor === name ||
+                storage.failWriteAfterClearFor === name),
+          );
+          if (failingName) throw new Error('Spreadsheet atomic write failed');
+
+          const next = structuredClone(data);
+          updates.forEach((update, index) => {
+            const name = names[index];
+            if (!name) throw new Error('Unknown test sheet id');
+            const headers = headersByTable[name];
+            next[name] = update.rows.map((row) =>
+              Object.fromEntries(
+                headers.map((header, column) => [
+                  header,
+                  row.values[column]?.userEnteredValue.stringValue ?? '',
+                ]),
+              ),
+            );
+          });
+          data = next;
+          names.forEach((name) => {
+            if (!name) return;
+            storage.writes.push(name);
+            storage.events.push('write:' + name);
+          });
+          if (names.includes(storage.failWriteAfterStoreFor))
+            throw new Error('Spreadsheet atomic write response lost');
+          if (storage.loseBatchResponse)
+            throw new Error('Batch acknowledgement lost after commit');
+        },
+      },
+    },
   });
   api.ensureSheet_ = (_spreadsheet, name) => {
     if (locks !== 1) throw new Error('Sheet setup outside LockService');
@@ -245,7 +352,11 @@ export function createTestBackend(
   function checkedMigration(operation: () => unknown) {
     let result: unknown;
     let failure: { error: unknown } | undefined;
-    try { result = operation(); } catch (error) { failure = { error }; }
+    try {
+      result = operation();
+    } catch (error) {
+      failure = { error };
+    }
     if (locks) throw new Error('Migration/setup leaked a lock');
     if (failure) throw failure.error;
     return result;
@@ -258,6 +369,11 @@ export function createTestBackend(
     cache,
     storage,
     properties,
+    setupControl: () => checkedMigration(() => api.setupSchedulerControl()),
+    createIntegration: (id: string, scopes: string[]) =>
+      checkedMigration(() => api.createSchedulerIntegration(id, scopes)),
+    revokeIntegration: (id: string) =>
+      checkedMigration(() => api.revokeSchedulerIntegration(id)),
     setup: () => {
       return checkedMigration(() => api.setupScheduler());
     },
@@ -293,6 +409,8 @@ export function createTestBackend(
       storage.failPropertyDeleteFor = '';
       storage.failPropertyAfterSetFor = '';
       storage.propertyEvents.length = 0;
+      storage.batches.length = 0;
+      storage.loseBatchResponse = false;
     },
   };
 }

@@ -43,6 +43,10 @@ function doPost(event) {
     }
     assertApiVersion_(body.apiVersion);
     assertSchemaMigrationIdle_();
+    if (typeof body.action === 'string' && body.action.indexOf('control.') === 0) return controlApi_(body);
+    if (body.integrationToken !== undefined || body.integrationId !== undefined) {
+      throw schedulerError_('FORBIDDEN', 'Integration credentials are restricted to Control API actions.');
+    }
     if (body.action === 'previewImport') return importPersonalSchedule_(body, true);
     if (body.action === 'importSchedule') return importPersonalSchedule_(body, false);
     if (body.action === 'updateEnrollments') return updateEnrollments_(body);

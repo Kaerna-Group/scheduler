@@ -1,0 +1,13 @@
+# Replace the absolute script path. Forward values already present in the
+# local Codex environment; never replace these variable names with secrets.
+[mcp_servers.scheduler]
+command = "node"
+args = ["E:/Projects/scheduler/scripts/scheduler-mcp.mjs"]
+env_vars = [
+  "SCHEDULER_API_URL",
+  "SCHEDULER_INTEGRATION_ID",
+  "SCHEDULER_INTEGRATION_TOKEN",
+  "SCHEDULER_INITIATOR",
+]
+startup_timeout_sec = 15
+tool_timeout_sec = 90

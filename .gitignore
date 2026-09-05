@@ -32,6 +32,12 @@ yarn-error.log*
 # local environment
 .env*
 
+# private MCP client settings and local exports
+/.mcp.json
+/mcp.local.json
+/mcp.local.toml
+/private/
+
 # deployment and generated files
 .vercel
 next-env.d.ts

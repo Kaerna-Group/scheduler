@@ -530,7 +530,9 @@ describe('cache invalidation follows committed state', () => {
       resetReads();
       const uncached = await schedule();
       expectColdRead();
-      expect(uncached.preferences?.appearance.mode).toBe('dark');
+      expect(uncached.preferences?.appearance.mode).toBe(
+        fault === 'flush' ? 'dark' : 'light',
+      );
       expect([...backend.cache.entries.keys()]).toEqual(oldKeys);
       // A successful write for a DIFFERENT user may clear the bypass marker,
       // but must not make any old same-revision cache entries eligible again.

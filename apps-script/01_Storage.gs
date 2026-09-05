@@ -142,14 +142,13 @@ function persistDatabase_(database, changedTables) {
   if (!changedTables.length) return;
   assertSchemaMigrationIdle_();
   databaseSchemaVersion_(database.Meta);
-  // Sheets writes are not transactional. If a write fails halfway through,
-  // never hide the partial state behind a previously valid cached revision.
+  // One Sheets API transaction includes data, revision and audit rows.
   const properties = PropertiesService.getScriptProperties();
   const recoveringWrite = properties.getProperty(SCHEDULER_CONFIG.cacheWritePendingProperty);
   properties.setProperty(SCHEDULER_CONFIG.cacheWritePendingProperty, 'yes');
   let allWritten = false;
   try {
-    changedTables.forEach(function (name) { writeTable_(name, database[name]); });
+    writeTablesAtomically_(database, changedTables);
     allWritten = true;
   } finally {
     // Commit buffered writes before the caller releases its script lock, so a

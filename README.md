@@ -2,6 +2,8 @@
 
 A responsive React/Vite schedule with a GitHub Pages frontend and a relational Google Sheets backend powered by Google Apps Script.
 
+The [Control API and CLI](docs/control-api.md) provides scoped agent access to catalog records, lessons and enrollments through saved plans, atomic writes and verification. It cannot manage user accounts or preferences. Start with `node scripts/scheduler.mjs --help`; backend setup and environment configuration are documented in the guide. The [local MCP server](docs/mcp.md) exposes the same operations over stdio, with a [Codex configuration example](examples/mcp/codex.toml) that forwards environment variables without storing credentials.
+
 ## Architecture
 
 ```text
