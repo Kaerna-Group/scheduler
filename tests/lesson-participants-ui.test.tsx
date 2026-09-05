@@ -57,11 +57,30 @@ describe('participant status UI', () => {
     expect(button.getAttribute('aria-label')).toBe(
       '2 people attending; participant check complete',
     );
-    expect(screen.getByText('7/7')).toBeTruthy();
+    expect(screen.getByText('Checked')).toBeTruthy();
     expect(screen.getByText('Owner User')).toBeTruthy();
     expect(screen.getByText('Second User')).toBeTruthy();
     expect(
-      screen.getByText('Check complete · 7 of 7 users checked.'),
+      screen.getByText('2 attendees found · 7 schedule profiles checked.'),
+    ).toBeTruthy();
+  });
+
+  it('does not present checked profiles as attendee count', () => {
+    const button = open({
+      users: [owner],
+      state: 'complete',
+      checked: 3,
+      total: 3,
+    });
+    expect(button.getAttribute('aria-label')).toBe(
+      'No other attendees; participant check complete',
+    );
+    expect(screen.getByText('Only you')).toBeTruthy();
+    expect(screen.queryByText('3/3')).toBeNull();
+    expect(
+      screen.getByText(
+        'Check complete · no other attendees found. 3 schedule profiles checked.',
+      ),
     ).toBeTruthy();
   });
 

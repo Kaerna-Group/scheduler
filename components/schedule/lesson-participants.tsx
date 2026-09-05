@@ -53,7 +53,12 @@ export function LessonParticipants({
           ? { icon: CircleAlert, text: 'Unavailable' }
           : {
               icon: CheckCircle2,
-              text: `${participants.checked}/${participants.total}`,
+              text:
+                participants.users.length > 1
+                  ? 'Checked'
+                  : participants.users.length === 1
+                    ? 'Only you'
+                    : 'No attendees',
             };
   const StatusIcon = status.icon;
   const label =
@@ -61,7 +66,9 @@ export function LessonParticipants({
       ? 'Checking participants'
       : participants.state === 'unavailable'
         ? 'Participant check unavailable'
-        : `${participants.users.length} ${participants.users.length === 1 ? 'person' : 'people'} attending; ${participants.state === 'stale' ? 'saved participant data' : 'participant check complete'}`;
+        : participants.state === 'complete' && participants.users.length <= 1
+          ? 'No other attendees; participant check complete'
+          : `${participants.users.length} ${participants.users.length === 1 ? 'person' : 'people'} attending; ${participants.state === 'stale' ? 'saved participant data' : 'participant check complete'}`;
   return (
     <div className="mt-3 flex justify-end">
       <Popover>
@@ -103,7 +110,7 @@ export function LessonParticipants({
           className="max-w-[calc(100vw-32px)] rounded-2xl p-4"
         >
           <PopoverTitle>
-            {participants.users.length
+            {participants.users.length >= 2
               ? 'Attending this class'
               : 'Participant check'}
           </PopoverTitle>
@@ -127,7 +134,9 @@ export function LessonParticipants({
           <p className="text-xs text-muted-foreground">
             {participants.state === 'checking' && 'Checking participants…'}
             {participants.state === 'complete' &&
-              `Check complete · ${participants.checked} of ${participants.total} users checked.`}
+              (participants.users.length <= 1
+                ? `Check complete · no other attendees found. ${participants.checked} schedule profiles checked.`
+                : `${participants.users.length} attendees found · ${participants.checked} schedule profiles checked.`)}
             {participants.state === 'stale' &&
               `Saved data · ${participants.checked} of ${participants.total} users were checked.`}
             {participants.state === 'unavailable' &&
