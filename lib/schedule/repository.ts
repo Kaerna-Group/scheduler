@@ -1,8 +1,9 @@
 import { fallbackSchedule } from '@/data/fallback-schedule';
 import { getApi, postApi } from '@/lib/api/client';
-import type { ImportPlanResponse, ScheduleImportV1, ScheduleUser, SharedConflictResolution, UserSchedule } from '@/lib/schedule/types';
+import type { ImportPlanResponse, LessonParticipantEntry, ScheduleImportV1, ScheduleUser, SharedConflictResolution, UserSchedule } from '@/lib/schedule/types';
 
 const CACHE_PREFIX = 'scheduler_cache_v1:';
+const PARTICIPANT_CACHE_PREFIX = 'scheduler_participants_v1:';
 const USERS_CACHE_KEY = 'scheduler_users_v1';
 export { EDIT_TOKEN_EVENT, getStoredEditToken, storeEditToken, forgetAllEditTokens } from '@/lib/auth/edit-tokens';
 const LAST_SYNC_PREFIX = 'scheduler_last_sync_v1:';
@@ -10,6 +11,94 @@ const HISTORY_CACHE_PREFIX = 'scheduler_history_v1:';
 
 function cacheKey(userSlug: string, semesterId: string) {
   return `${CACHE_PREFIX}${userSlug}:${semesterId}`;
+}
+
+function participantCacheKey(userSlug: string, semesterId: string) {
+  return `${PARTICIPANT_CACHE_PREFIX}${userSlug}:${semesterId}`;
+}
+
+interface CachedParticipantChecks {
+  version: 1;
+  userSlug: string;
+  semesterId: string;
+  revision: number;
+  lessonParticipants: LessonParticipantEntry[];
+  participantUserCount: number;
+}
+
+type ParticipantChecks = Pick<
+  CachedParticipantChecks,
+  'lessonParticipants' | 'participantUserCount'
+>;
+
+function validParticipantEntries(value: unknown): value is LessonParticipantEntry[] {
+  return Array.isArray(value) && value.every((entry) => {
+    if (!entry || typeof entry !== 'object') return false;
+    const item = entry as Partial<LessonParticipantEntry>;
+    return typeof item.lessonId === 'string' && Number.isInteger(item.week) &&
+      Number(item.week) > 0 && Array.isArray(item.userIds) &&
+      item.userIds.every((userId) => typeof userId === 'string');
+  });
+}
+
+function participantChecksForSchedule(
+  schedule: UserSchedule,
+): ParticipantChecks | null {
+  if (!validParticipantEntries(schedule.lessonParticipants) ||
+    !Number.isInteger(schedule.participantUserCount) ||
+    Number(schedule.participantUserCount) < 0) return null;
+  const occurrences = new Set(schedule.lessons.flatMap((lesson) =>
+    lesson.weeks.map((week) => `${lesson.id}:${week}`)));
+  if (schedule.lessonParticipants.some((entry) =>
+    !occurrences.has(`${entry.lessonId}:${entry.week}`))) return null;
+  return {
+    lessonParticipants: schedule.lessonParticipants,
+    participantUserCount: Number(schedule.participantUserCount),
+  };
+}
+
+function readCachedParticipantChecks(
+  schedule: UserSchedule,
+): ParticipantChecks | null {
+  try {
+    const raw = localStorage.getItem(participantCacheKey(
+      schedule.user.slug,
+      schedule.semester.id,
+    ));
+    if (!raw) return null;
+    const cached = JSON.parse(raw) as Partial<CachedParticipantChecks>;
+    if (cached.version !== 1 || cached.userSlug !== schedule.user.slug ||
+      cached.semesterId !== schedule.semester.id ||
+      cached.revision !== schedule.revision) return null;
+    return participantChecksForSchedule({
+      ...schedule,
+      lessonParticipants: cached.lessonParticipants,
+      participantUserCount: cached.participantUserCount,
+    });
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedParticipantChecks(schedule: UserSchedule) {
+  const checks = participantChecksForSchedule(schedule);
+  const key = participantCacheKey(schedule.user.slug, schedule.semester.id);
+  try {
+    if (!checks) {
+      localStorage.removeItem(key);
+      return;
+    }
+    const cached: CachedParticipantChecks = {
+      version: 1,
+      userSlug: schedule.user.slug,
+      semesterId: schedule.semester.id,
+      revision: schedule.revision,
+      ...checks,
+    };
+    localStorage.setItem(key, JSON.stringify(cached));
+  } catch {
+    // Participant checks remain available from the in-memory schedule.
+  }
 }
 
 function lastSyncKey(userSlug: string, semesterId: string) {
@@ -88,9 +177,14 @@ export function readCachedSchedule(userSlug: string, semesterId: string): UserSc
     const raw = localStorage.getItem(cacheKey(userSlug, semesterId));
     if (!raw) return null;
     const schedule = JSON.parse(raw) as UserSchedule;
+    if (schedule.user.slug !== userSlug || schedule.semester.id !== semesterId)
+      return null;
+    const participantChecks = readCachedParticipantChecks(schedule) ??
+      participantChecksForSchedule(schedule) ?? {};
     const users = mergeScheduleUsers(schedule.users, readCachedUsers());
     return {
       ...schedule,
+      ...participantChecks,
       users,
       user: users.find((item) => item.slug === userSlug) ?? schedule.user,
     };
@@ -102,6 +196,7 @@ export function readCachedSchedule(userSlug: string, semesterId: string): UserSc
 function writeCachedSchedule(schedule: UserSchedule) {
   try {
     localStorage.setItem(cacheKey(schedule.user.slug, schedule.semester.id), JSON.stringify(schedule));
+    writeCachedParticipantChecks(schedule);
     writeCachedUsers(schedule.users);
   } catch {
     // Cache is a best-effort acceleration layer.
@@ -117,7 +212,7 @@ export function clearScheduleCache() {
     const keys: string[] = [];
     for (let index = 0; index < localStorage.length; index += 1) {
       const key = localStorage.key(index);
-      if (key?.startsWith(CACHE_PREFIX) || key?.startsWith(LAST_SYNC_PREFIX) || key?.startsWith(HISTORY_CACHE_PREFIX) || key === USERS_CACHE_KEY) keys.push(key);
+      if (key?.startsWith(CACHE_PREFIX) || key?.startsWith(PARTICIPANT_CACHE_PREFIX) || key?.startsWith(LAST_SYNC_PREFIX) || key?.startsWith(HISTORY_CACHE_PREFIX) || key === USERS_CACHE_KEY) keys.push(key);
     }
     keys.forEach((key) => localStorage.removeItem(key));
   } catch {

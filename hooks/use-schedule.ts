@@ -112,6 +112,10 @@ export function useSchedule(selection?: Selection) {
   const resolvedSnapshot = useRef<Snapshot | null>(null);
   const previousSelectionKey = useRef<string | null>(null);
   const forceInitialRead = useRef(Boolean(selection?.fromLink));
+  const participantProjectionMissing =
+    initial.source === 'cache' &&
+    (!initial.schedule.lessonParticipants ||
+      initial.schedule.participantUserCount === undefined);
   // Read policy applies when selecting a user/semester, not when a URL is
   // normalized or only its week/filter changes.
   useEffect(() => {
@@ -207,6 +211,7 @@ export function useSchedule(selection?: Selection) {
       if (
         (previousKey !== null && previousKey !== initial.key) ||
         forceInitialRead.current ||
+        participantProjectionMissing ||
         readPreferences(selectedUser).schedule.refreshOnOpen
       )
         void refresh();
@@ -216,7 +221,7 @@ export function useSchedule(selection?: Selection) {
       }
     }
     return () => requestRef.current?.abort();
-  }, [initial, refresh, selectedUser, requestedSemesterId]);
+  }, [initial, refresh, selectedUser, requestedSemesterId, participantProjectionMissing]);
 
   useEffect(() => {
     const cameOnline = online && !previousOnlineRef.current;

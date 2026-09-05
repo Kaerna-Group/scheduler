@@ -21,6 +21,8 @@ afterEach(cleanup);
 function open(participants: Participants) {
   render(<LessonParticipants participants={participants} ownerId={owner.id} />);
   const button = screen.getByRole('button');
+  expect(button.parentElement?.className).toContain('absolute');
+  expect(button.parentElement?.className).not.toContain('mt-3');
   fireEvent.click(button);
   return button;
 }

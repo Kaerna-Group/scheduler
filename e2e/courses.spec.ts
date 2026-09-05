@@ -22,6 +22,21 @@ test('shared Scrum classes show avatars and a list on hover or touch', async ({
     name: '2 people attending; participant check complete',
   });
   await expect(avatars).toHaveCount(2);
+  const card = avatars.first().locator('xpath=ancestor::article');
+  const [cardBox, indicatorBox] = await Promise.all([
+    card.boundingBox(),
+    avatars.first().boundingBox(),
+  ]);
+  expect(cardBox).not.toBeNull();
+  expect(indicatorBox).not.toBeNull();
+  expect(indicatorBox!.x).toBeGreaterThanOrEqual(cardBox!.x);
+  expect(indicatorBox!.y).toBeGreaterThanOrEqual(cardBox!.y);
+  expect(indicatorBox!.x + indicatorBox!.width).toBeLessThanOrEqual(
+    cardBox!.x + cardBox!.width,
+  );
+  expect(indicatorBox!.y + indicatorBox!.height).toBeLessThanOrEqual(
+    cardBox!.y + cardBox!.height,
+  );
   if (testInfo.project.name === 'mobile') await avatars.first().tap();
   else await avatars.first().hover();
   const popup = page.getByRole('dialog', { name: 'Attending this class' });

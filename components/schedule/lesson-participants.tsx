@@ -70,14 +70,14 @@ export function LessonParticipants({
           ? 'No other attendees; participant check complete'
           : `${participants.users.length} ${participants.users.length === 1 ? 'person' : 'people'} attending; ${participants.state === 'stale' ? 'saved participant data' : 'participant check complete'}`;
   return (
-    <div className="mt-3 flex justify-end">
+    <div className="absolute bottom-2 right-2 z-10">
       <Popover>
         <PopoverTrigger
           openOnHover
           delay={150}
           closeDelay={150}
           aria-label={label}
-          className="inline-flex min-h-9 items-center gap-2 rounded-full px-2 py-1 text-xs text-muted-foreground transition hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          className="inline-flex min-h-8 items-center gap-2 rounded-full border border-border/60 bg-card/90 px-2 py-1 text-xs text-muted-foreground shadow-sm backdrop-blur-sm transition hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         >
           {participants.users.length >= 2 && (
             <>
