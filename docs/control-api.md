@@ -23,6 +23,8 @@ The CLI and [local MCP server](mcp.md) call typed Apps Script actions through th
 
    Save the returned `integrationToken` directly into a local secret manager or protected process environment. The backend stores only its domain-separated SHA-256 hash, integration ID, allowed scopes, active flag and spreadsheet binding in Script Properties. There is no integration user in `Users`. The editor helpers are not exposed through the HTTP router. Do not log the returned secret or copy it into a prompt, committed file or frontend environment variable.
 
+   To capture the one-time token in the editor, assign the result to a local variable, place a breakpoint on the next executable line, then use **Debug** and inspect that variable before continuing. See the [complete Windows walkthrough](mcp-windows-ru.md#3-получить-отдельный-ключ-интеграции). This works without `SpreadsheetApp.getUi()`, which is unavailable in standalone scripts and some execution contexts.
+
    Provision narrower scopes when appropriate. Planning/applying requires `catalog:read`, `users:read`, and the scope for every command. Verification requires `history:read` and `users:read`; detailed operation history also requires `catalog:read`. Undo additionally requires `changes:undo` and the original command permissions.
 
 5. Configure the CLI process with `SCHEDULER_API_URL` (the HTTPS `/exec` URL), `SCHEDULER_INTEGRATION_ID`, `SCHEDULER_INTEGRATION_TOKEN` and `SCHEDULER_INITIATOR`. The initiator is a **caller-reported audit label**, not an authenticated user identity. The backend separately records the authenticated integration as `integration:<id>`.
