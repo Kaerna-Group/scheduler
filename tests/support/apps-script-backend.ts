@@ -22,6 +22,9 @@ interface BackendFunctions {
   setupSchedulerControl: () => unknown;
   createSchedulerIntegration: (id: string, scopes: string[]) => unknown;
   revokeSchedulerIntegration: (id: string) => unknown;
+  previewSchedulerSubjectDeduplication: () => unknown;
+  applySchedulerSubjectDeduplication: () => unknown;
+  previewSchedulerSubjectDeduplicationUndo: () => unknown;
 }
 
 interface TestSheet {
@@ -108,7 +111,7 @@ export function createTestBackend(
     loseBatchResponse: false,
   };
   const context = vm.createContext({
-    console: { error() {} },
+    console: { error() {}, log() {} },
     Utilities: {
       getUuid: randomUUID,
       DigestAlgorithm: { SHA_256: 'sha256' },
@@ -374,6 +377,12 @@ export function createTestBackend(
       checkedMigration(() => api.createSchedulerIntegration(id, scopes)),
     revokeIntegration: (id: string) =>
       checkedMigration(() => api.revokeSchedulerIntegration(id)),
+    previewSubjectDeduplication: () =>
+      checkedMigration(() => api.previewSchedulerSubjectDeduplication()),
+    applySubjectDeduplication: () =>
+      checkedMigration(() => api.applySchedulerSubjectDeduplication()),
+    previewSubjectDeduplicationUndo: () =>
+      checkedMigration(() => api.previewSchedulerSubjectDeduplicationUndo()),
     setup: () => {
       return checkedMigration(() => api.setupScheduler());
     },

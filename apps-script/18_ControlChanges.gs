@@ -149,6 +149,7 @@ function controlPlan_(database, actor, body) {
   const previousConflicts = new Set(controlConflicts_(database).map(controlCanonical_));
   const conflicts = controlConflicts_(next).filter(function (conflict) { return !previousConflicts.has(controlCanonical_(conflict)); });
   const confirmationReasons = [];
+  if (body.commands.some(function (command) { return command.type === 'subject.merge'; })) confirmationReasons.push('SUBJECT_MERGE');
   if (body.commands.some(function (command) { return command.type === 'semester.archive'; })) confirmationReasons.push('SEMESTER_ARCHIVE');
   if (body.commands.filter(function (command) { return /\.(archive|cancel|remove)$/.test(command.type); }).length > 1) confirmationReasons.push('BULK_REMOVAL');
   // Undo can remove several newly created records with one typed command.

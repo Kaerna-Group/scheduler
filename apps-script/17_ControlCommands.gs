@@ -90,7 +90,7 @@ function controlCommandScope_(command) {
   if (!command || typeof command.type !== 'string') throw schedulerError_('VALIDATION_ERROR', 'A typed command is required.');
   const scopes = {
     'lesson.create': 'lessons:write', 'lesson.update': 'lessons:write', 'lesson.move': 'lessons:write', 'lesson.cancel': 'lessons:write',
-    'subject.create': 'catalog:write', 'subject.update': 'catalog:write', 'subject.archive': 'catalog:write',
+    'subject.create': 'catalog:write', 'subject.update': 'catalog:write', 'subject.archive': 'catalog:write', 'subject.merge': 'catalog:write',
     'offering.create': 'catalog:write', 'offering.update': 'catalog:write', 'offering.archive': 'catalog:write',
     'group.create': 'catalog:write', 'group.update': 'catalog:write', 'group.archive': 'catalog:write',
     'semester.create': 'catalog:write', 'semester.update': 'catalog:write', 'semester.archive': 'catalog:write', 'semester.setCurrent': 'catalog:write',
@@ -103,6 +103,7 @@ function controlCommandScope_(command) {
 
 function controlRunCommand_(database, command) {
   const type = command.type;
+  if (type === 'subject.merge') { mergeSubjectCards_(database, command); return; }
   if (type.indexOf('lesson.') === 0) {
     if (type === 'lesson.create') {
       controlObject_(command, ['type', 'offeringId', 'fields'], ['offeringId', 'fields']);

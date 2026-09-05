@@ -2,6 +2,8 @@
 
 [Пошаговая инструкция на русском: Windows и Codex CLI](mcp-windows-ru.md).
 
+[Объединение дублей дисциплин через CLI, MCP или редактор Apps Script](subject-deduplication-ru.md).
+
 The local MCP server exposes the same Apps Script Control API as the CLI. It uses the official TypeScript MCP SDK v2, supports modern discovery and legacy initialization, and communicates over **stdio**. It opens no HTTP listener. Rules, credentials, saved plans, revisions, atomic writes, audit and verification remain in Apps Script.
 
 ## Prepare and connect

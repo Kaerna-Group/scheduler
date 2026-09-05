@@ -120,6 +120,19 @@ Archived semesters and their records are read-only. A subject referenced by an a
 
 The user directory contains only `id`, `slug`, `displayName` for active users. History exposes only the calling integration's operations, with their original plans and initiator labels. Undo is conservative: it requires that operation to remain the newest schedule revision and that the schedule/participant fingerprint still matches. It reverses only the saved permitted row changes, creates a new revision and records `CONTROL_UNDO`; it never restores account or preference rows.
 
+## Subject deduplication
+
+`subject.merge` takes `targetSubjectId` and `sourceSubjectIds` (1–50 distinct IDs) and requires `catalog:write`.
+It redirects every source card's offering to the target and removes the redundant subject rows in the same
+transaction. Target metadata, course codes, lessons, groups and enrollments are preserved. Names must match
+after Unicode NFC, case and whitespace normalization; inactive cards or any archived-semester references
+are refused. Every merge requires `SUBJECT_MERGE` confirmation and uses ordinary saved-plan verification/undo.
+See [owner editor maintenance](subject-deduplication-ru.md) for an alternative that needs no integration token.
+
+Imports of a new course code reuse a unique active same-name subject already used in the target semester
+(or an unreferenced card). Ambiguous candidates return `AMBIGUOUS_SUBJECT` before any write. Display metadata
+stays with the existing card; differently named courses and historical semester copies remain independent.
+
 ## Server protocol and guarantees
 
 All control actions use POST JSON with `apiVersion: 1`, `integrationId`, `integrationToken`, and an `action`: `control.catalog`, `control.users`, `control.enrollments.find`, `control.lessons.find`, `control.changes.plan`, `control.changes.apply`, `control.changes.verify`, `control.history`. Request fields map directly from the CLI: `semesterId`, `query`, `filters`, `commands/initiator/reason`, `planId/operationId/confirmPlanId`, `operationId`, and `limit`, respectively. Integration credentials are never accepted by the normal admin/import/preferences endpoints, including when accompanied by a valid admin edit token.

@@ -21,7 +21,19 @@ function findOrCreateGroup_(database, offering, groupNumber, actor, changes) {
 
 function createOfferingFromImport_(database, semester, subjectInput, actor, changes) {
   requireRole_(actor, ['editor', 'admin']);
-  const subject = {
+  // Codes identify offerings, not subject cards. Reuse a unique same-name
+  // subject in this semester; historical semester copies remain independent.
+  const semesterSubjects = new Set(database.Offerings.filter(function (row) {
+    return row.semester_id === semester.semester_id && isActive_(row.active);
+  }).map(function (row) { return row.subject_id; }));
+  const referencedSubjects = new Set(database.Offerings.map(function (row) { return row.subject_id; }));
+  const name = normalizedSubjectName_(subjectInput.name);
+  const candidates = database.Subjects.filter(function (row) {
+    return isActive_(row.active) && normalizedSubjectName_(row.name) === name &&
+      (semesterSubjects.has(row.subject_id) || !referencedSubjects.has(row.subject_id));
+  });
+  if (candidates.length > 1) throw schedulerError_('AMBIGUOUS_SUBJECT', 'Merge the existing duplicate subject cards before importing another course code.', { subjectIds: candidates.map(function (row) { return row.subject_id; }) });
+  const subject = candidates[0] || {
     subject_id: newId_('SUB'),
     name: String(subjectInput.name).trim(),
     short_name: String(subjectInput.shortName || subjectInput.name).trim(),
@@ -35,9 +47,11 @@ function createOfferingFromImport_(database, semester, subjectInput, actor, chan
     external_code: String(subjectInput.externalCode).trim(),
     active: 'yes',
   };
-  database.Subjects.push(subject);
+  if (!candidates.length) {
+    database.Subjects.push(subject);
+    changes.push({ action: 'CREATE', entityType: 'Subject', entityId: subject.subject_id, externalCode: offering.external_code, oldValue: null, newValue: subject });
+  }
   database.Offerings.push(offering);
-  changes.push({ action: 'CREATE', entityType: 'Subject', entityId: subject.subject_id, externalCode: offering.external_code, oldValue: null, newValue: subject });
   changes.push({ action: 'CREATE', entityType: 'Offering', entityId: offering.offering_id, externalCode: offering.external_code, oldValue: null, newValue: offering });
   return offering;
 }
@@ -316,7 +330,7 @@ function planPersonalImport_(database, body, allowUnresolvedConflicts) {
 
     const subject = database.Subjects.find(function (row) { return row.subject_id === offering.subject_id; });
     const incomingName = String(subjectInput.name).trim();
-    if (subject.name !== incomingName) {
+    if (normalizedSubjectName_(subject.name) !== normalizedSubjectName_(incomingName)) {
       conflicts.push({
         code: 'COURSE_DATA_CONFLICT', kind: 'subject', externalCode: code, offeringId: offering.offering_id,
         resolution: sharedResolution,

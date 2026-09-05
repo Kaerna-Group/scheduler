@@ -86,6 +86,11 @@ export const command = z.discriminatedUnion('type', [
   }),
   z.strictObject({ type: z.literal('subject.archive'), id }),
   z.strictObject({
+    type: z.literal('subject.merge'),
+    targetSubjectId: id,
+    sourceSubjectIds: z.array(id).min(1).max(50),
+  }),
+  z.strictObject({
     type: z.literal('offering.create'),
     id: id.optional(),
     fields: offeringFields,

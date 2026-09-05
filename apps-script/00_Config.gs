@@ -54,6 +54,10 @@ function isActive_(value) {
   return String(value).toLowerCase() === 'yes' || value === true || String(value) === '1';
 }
 
+function normalizedSubjectName_(value) {
+  return String(value || '').normalize('NFC').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
 function newId_(prefix) {
   return prefix + '-' + Utilities.getUuid().replace(/-/g, '').slice(0, 16).toUpperCase();
 }
