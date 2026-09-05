@@ -34,6 +34,7 @@ export interface Lesson {
   offeringId?: string;
   type: LessonType;
   group?: number;
+  groups?: number[];
   day: WeekDay;
   startTime: string;
   endTime: string;
@@ -41,6 +42,12 @@ export interface Lesson {
   room?: string;
   format: LessonFormat;
   teacher: string;
+}
+
+export interface LessonParticipantEntry {
+  lessonId: string;
+  week: number;
+  userIds: string[];
 }
 
 export interface Semester {
@@ -63,6 +70,8 @@ export interface UserSchedule {
   currentSemesterId?: string;
   subjects: Subject[];
   lessons: Lesson[];
+  lessonParticipants?: LessonParticipantEntry[];
+  participantUserCount?: number;
   revision: number;
   preferences?: import('@/lib/preferences/types').SchedulerPreferences;
   preferencesRevision?: number;

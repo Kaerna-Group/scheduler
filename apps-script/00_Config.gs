@@ -1,6 +1,6 @@
 const SCHEDULER_CONFIG = Object.freeze({
   apiVersion: 1,
-  scheduleCacheVersion: 1,
+  scheduleCacheVersion: 2,
   scheduleCacheTtlSeconds: 300,
   scheduleCacheMaxBytes: 90000,
   cacheWritePendingProperty: 'SCHEDULER_CACHE_WRITE_PENDING',

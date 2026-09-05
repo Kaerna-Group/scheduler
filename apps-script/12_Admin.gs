@@ -188,6 +188,28 @@ function buildAdminDiagnostics_(database) {
   if (localCodes) diagnostics.push({ code: 'LOCAL_CODES', level: 'warning', message: localCodes + ' offerings use temporary LOCAL-* codes.' });
   const noLessons = database.Offerings.filter(function (row) { return isActive_(row.active) && !database.Lessons.some(function (lesson) { return lesson.offering_id === row.offering_id && isActive_(lesson.active); }); }).length;
   if (noLessons) diagnostics.push({ code: 'NO_LESSONS', level: 'warning', message: noLessons + ' offerings have no active lessons (may be intentional).' });
+  const subjectNames = {};
+  database.Subjects.filter(function (row) { return isActive_(row.active); }).forEach(function (row) {
+    const normalized = String(row.name || '').trim().toLocaleLowerCase().replace(/\s+/g, ' ');
+    if (!subjectNames[normalized]) subjectNames[normalized] = [];
+    subjectNames[normalized].push(row.subject_id);
+  });
+  const duplicateSubjects = Object.keys(subjectNames).filter(function (name) { return name && subjectNames[name].length > 1; }).length;
+  if (duplicateSubjects) diagnostics.push({ code: 'DUPLICATE_SUBJECTS', level: 'warning', message: duplicateSubjects + ' course names belong to different subject records. Review their offerings before merging anything.' });
+  const enrollmentKeys = {};
+  let duplicateEnrollments = 0;
+  const groupById = {};
+  database.Groups.forEach(function (row) { groupById[row.group_id] = row; });
+  let invalidEnrollmentGroups = 0;
+  database.Enrollments.filter(function (row) { return isActive_(row.active); }).forEach(function (row) {
+    const key = row.user_id + ':' + row.offering_id;
+    if (enrollmentKeys[key]) duplicateEnrollments++;
+    enrollmentKeys[key] = true;
+    const group = row.group_id ? groupById[row.group_id] : null;
+    if (row.group_id && (!group || group.offering_id !== row.offering_id || !isActive_(group.active))) invalidEnrollmentGroups++;
+  });
+  if (duplicateEnrollments) diagnostics.push({ code: 'DUPLICATE_ENROLLMENTS', level: 'warning', message: duplicateEnrollments + ' duplicate active user/course enrollments require review.' });
+  if (invalidEnrollmentGroups) diagnostics.push({ code: 'ENROLLMENT_GROUPS', level: 'error', message: invalidEnrollmentGroups + ' active enrollments reference a missing, inactive, or different course group.' });
   return diagnostics;
 }
 

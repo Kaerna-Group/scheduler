@@ -415,7 +415,7 @@ describe('shareable schedule state', () => {
       backend.calls
         .filter((call) => call.action === 'schedule')
         .map((call) => call.body.user),
-    ).toEqual(['linked-user', 'ermolz']);
+    ).toEqual(['linked-user']);
     expect(localStorage.getItem('scheduler_selected_user_v1')).toBe(
       'linked-user',
     );

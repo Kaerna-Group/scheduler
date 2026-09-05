@@ -19,7 +19,7 @@ test('shared Scrum classes show avatars and a list on hover or touch', async ({
     '#/week/3?user=ermolz&semester=SEM-2026-FALL&subject=565095',
   );
   const avatars = page.getByRole('button', {
-    name: '2 people attending this class',
+    name: '2 people attending; participant check complete',
   });
   await expect(avatars).toHaveCount(2);
   if (testInfo.project.name === 'mobile') await avatars.first().tap();
@@ -44,12 +44,16 @@ test('shared Scrum classes show avatars and a list on hover or touch', async ({
   await expect(
     page
       .getByRole('region', { name: 'Lectures' })
-      .getByRole('button', { name: '2 people attending this class' }),
+      .getByRole('button', {
+        name: '2 people attending; participant check complete',
+      }),
   ).toHaveCount(7);
   await expect(
     page
       .getByRole('region', { name: 'Group classes' })
-      .getByRole('button', { name: '2 people attending this class' }),
+      .getByRole('button', {
+        name: '2 people attending; participant check complete',
+      }),
   ).toHaveCount(7);
   expect(
     backend.calls.filter((call) => call.action === 'schedule'),

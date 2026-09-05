@@ -95,7 +95,9 @@ In **Courses**, click a course card or select a course in the filter to open its
 
 When two or more users share a class, their initials appear at the bottom right of its card in Today, Week and course details. Hover, click or tap the avatars to see the names. Matches require the same course offering, semester dates, weekday, start/end times, lesson type and scheduled week; group classes also require the same group. The displayed schedule's owner is included. Matching a course name alone or merely overlapping times does not count.
 
-Participants are checked with the existing read-only schedule endpoint, at most three requests at a time. Each other user's schedule is read once per revision while the page is mounted and reused across weeks and views. These reads do not overwrite personal schedule caches, synchronization baselines or preferences. Only matching revisions are compared; canceled selections are ignored. Offline lists use available saved schedules and are labeled as cached; partial lists are labeled as incomplete. No backend or schema changes are needed.
+Participants are calculated by the backend from active users, enrollments, offerings, `LessonGroups` and `LessonWeeks` in the same database snapshot as the personal schedule. Each occurrence is identified by `semesterId + lessonId + week`; simultaneous lessons remain separate, while one canonical lesson assigned to several groups includes every enrolled user whose group is allowed. The result is returned in the normal schedule response, so the client makes no per-user requests and cannot compare mismatched revisions. Cached lists are labeled as saved data, and older responses without the participant projection show an explicit unavailable status instead of looking like a completed empty check. No schema migration is needed.
+
+System diagnostics warn about active duplicate enrollments, invalid enrollment/group relationships and normalized duplicate subject names with different IDs. These warnings never merge data automatically.
 
 ## Changes since the previous synchronization
 
